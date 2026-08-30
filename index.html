@@ -77,7 +77,22 @@
       color:#64748b;
     "
   ></small>
-</div>          <button id="reloadBtn" class="btn btn-primary">Load</button>
+</div>          
+
+<div class="tfield">
+  <label>Cycle Status</label>
+  <div id="cycleStatus" class="badge">OPEN</div>
+</div>
+
+<button
+  id="cycleLockBtn"
+  class="btn btn-light admin-only"
+  style="border:1px solid var(--border)"
+>
+  Close Billing Cycle
+</button>
+
+<button id="reloadBtn" class="btn btn-primary">Load</button>
           <button id="exportBtn" class="btn btn-light" style="border:1px solid var(--border)">Export Excel</button>
           <button id="exportPdfBtn" class="btn btn-light" style="border:1px solid var(--border)">Export PDF</button>
           <button id="exportFinancePdfBtn" class="btn btn-light" style="border:1px solid var(--border)">Finance PDF</button>
@@ -142,7 +157,7 @@ const SUPABASE_URL = 'https://qppkqopbtaswfwspjxsc.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_VpqWrjBfc0XoawJ8CGYrcw_GdGL4bPy';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const $=id=>document.getElementById(id);
-let currentUser=null,residents=[],items=[],entries=[],recurring=[],currentUserRole='staff',saveTimer=null;
+let currentUser=null,residents=[],items=[],entries=[],recurring=[],currentUserRole='staff',currentCycleLocked=false,saveTimer=null;
 const money=n=>new Intl.NumberFormat('en-MY',{style:'currency',currency:'MYR'}).format(Number(n||0)).replace('MYR','RM');
 const todayMonth = () => {
   const today = new Date();
@@ -302,13 +317,17 @@ async function loadMonth() {
     return;
   }
 
-  entries = e.data || [];
+entries = e.data || [];
 
-  recurring = (r.data || []).filter(x => x.active);
+recurring = (r.data || []).filter(x => x.active);
 
-  renderCalendar();
+await loadBillingCycleStatus();
 
-  setStatus(
+renderCalendar();
+
+applyBillingCycleStatus();
+
+setStatus(
     `Loaded ${formatShortDate(cycle.startDate)} – ${formatShortDate(cycle.endDate)}. Changes save automatically.`,
     'ok'
   );
@@ -1663,6 +1682,166 @@ function applyRoleAccess() {
 
   }
 }
+async function loadBillingCycleStatus() {
+
+  const month = $('monthPicker').value;
+
+  if (!month) {
+    currentCycleLocked = false;
+    applyBillingCycleStatus();
+    return;
+  }
+
+  const { data, error } = await sb
+    .from('billing_cycles')
+    .select('is_locked')
+    .eq('billing_month', month)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Could not load billing cycle status:', error);
+    currentCycleLocked = false;
+    applyBillingCycleStatus();
+    return;
+  }
+
+  currentCycleLocked =
+    data?.is_locked === true;
+
+  applyBillingCycleStatus();
+}
+function applyBillingCycleStatus() {
+
+  const status = $('cycleStatus');
+  const button = $('cycleLockBtn');
+
+  if (status) {
+
+    status.textContent =
+      currentCycleLocked
+        ? 'LOCKED 🔒'
+        : 'OPEN';
+
+  }
+
+  if (button) {
+
+    button.textContent =
+      currentCycleLocked
+        ? 'Unlock Billing Cycle'
+        : 'Close Billing Cycle';
+
+  }
+
+  document
+    .querySelectorAll('.qty')
+    .forEach(input => {
+
+      input.disabled =
+        currentCycleLocked;
+
+    });
+}
+$('cycleLockBtn').onclick = async () => {
+
+  if (currentUserRole !== 'admin') {
+    return toast('Admin access required');
+  }
+
+  const month =
+    $('monthPicker').value;
+
+  if (!month) {
+    return toast('Select a billing cycle first');
+  }
+
+  const cycle =
+    getBillingCycle(month);
+
+  if (!cycle) {
+    return toast('Invalid billing cycle');
+  }
+
+  // -------------------------
+  // UNLOCK
+  // -------------------------
+
+  if (currentCycleLocked) {
+
+    const ok = confirm(
+      `Unlock ${month} billing cycle?\n\n` +
+      `${formatShortDate(cycle.startDate)} – ` +
+      `${formatShortDate(cycle.endDate)}\n\n` +
+      `Charges can be edited again after unlocking.`
+    );
+
+    if (!ok) {
+      return;
+    }
+
+    const { error } = await sb
+      .from('billing_cycles')
+      .update({
+        is_locked: false,
+        locked_at: null,
+        locked_by: null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('billing_month', month);
+
+    if (error) {
+      return toast(error.message);
+    }
+
+    toast('Billing cycle unlocked');
+
+  }
+
+  // -------------------------
+  // LOCK
+  // -------------------------
+
+  else {
+
+    const ok = confirm(
+      `Close ${month} billing cycle?\n\n` +
+      `${formatShortDate(cycle.startDate)} – ` +
+      `${formatShortDate(cycle.endDate)}\n\n` +
+      `Once closed, nobody can change charges until an Admin unlocks it.`
+    );
+
+    if (!ok) {
+      return;
+    }
+
+    const { error } = await sb
+      .from('billing_cycles')
+      .upsert({
+        billing_month: month,
+        cycle_start: cycle.start,
+        cycle_end: cycle.end,
+        is_locked: true,
+        locked_at: new Date().toISOString(),
+        locked_by: currentUser.id,
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'billing_month'
+      });
+
+    if (error) {
+      return toast(error.message);
+    }
+
+    toast('Billing cycle closed');
+  }
+
+  await loadBillingCycleStatus();
+
+  renderCalendar();
+
+  applyBillingCycleStatus();
+};
+
 init();
 </script>
 </body>
