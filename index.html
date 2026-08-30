@@ -24,6 +24,8 @@
     .badge{display:inline-block;padding:3px 7px;border-radius:999px;background:var(--mint);color:var(--green2);font-size:10px;font-weight:800}.toast{position:fixed;right:18px;bottom:18px;z-index:60;background:#20302c;color:#fff;padding:11px 14px;border-radius:9px;box-shadow:var(--shadow);font-size:12px}.note{font-size:12px;color:var(--muted);line-height:1.5}
     @media(max-width:850px){.toolbar{grid-template-columns:1fr 1fr}.summary{grid-template-columns:1fr 1fr}.topbar{flex-wrap:wrap}.calendar .item-col{min-width:175px;max-width:175px}.calendar .unit-col{left:175px}.calendar .price-col{left:240px}.grid2{grid-template-columns:1fr}}
   </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
   <section id="loginView" class="wrap">
@@ -54,9 +56,26 @@
       <section id="chargesTab">
         <div class="card toolbar">
           <div class="tfield"><label>Resident</label><select id="residentSelect"></select></div>
-          <div class="tfield"><label>Billing Month</label><input id="monthPicker" type="month"></div>
-          <button id="reloadBtn" class="btn btn-primary">Load</button>
+<div class="tfield">
+  <label>Billing Cycle</label>
+
+  <input
+    id="monthPicker"
+    type="month"
+  >
+
+  <small
+    id="billingPeriodText"
+    style="
+      display:block;
+      margin-top:5px;
+      color:#64748b;
+    "
+  ></small>
+</div>          <button id="reloadBtn" class="btn btn-primary">Load</button>
           <button id="exportBtn" class="btn btn-light" style="border:1px solid var(--border)">Export Excel</button>
+          <button id="exportPdfBtn" class="btn btn-light" style="border:1px solid var(--border)">Export PDF</button>
+          <button id="exportFinancePdfBtn" class="btn btn-light" style="border:1px solid var(--border)">Finance PDF</button>
           <button id="printBtn" class="btn btn-light" style="border:1px solid var(--border)">Print / PDF</button>
         </div>
         <div id="saveStatus" class="status">Select a resident to begin.</div>
@@ -120,12 +139,87 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const $=id=>document.getElementById(id);
 let currentUser=null,residents=[],items=[],entries=[],recurring=[],saveTimer=null;
 const money=n=>new Intl.NumberFormat('en-MY',{style:'currency',currency:'MYR'}).format(Number(n||0)).replace('MYR','RM');
-const todayMonth=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`};
-const daysInMonth=m=>{const [y,mo]=m.split('-').map(Number);return new Date(y,mo,0).getDate()};
+const todayMonth = () => {
+  const today = new Date();
+
+  let year = today.getFullYear();
+  let month = today.getMonth() + 1;
+
+  // Billing cycle:
+  // 1st–24th = current month's billing cycle
+  // 25th onwards = following month's billing cycle
+  if (today.getDate() >= 25) {
+    month++;
+
+    if (month > 12) {
+      month = 1;
+      year++;
+    }
+  }
+
+  return `${year}-${String(month).padStart(2, '0')}`;
+};const daysInMonth=m=>{const [y,mo]=m.split('-').map(Number);return new Date(y,mo,0).getDate()};
+function getBillingCycle(monthValue) {
+  if (!monthValue) return null;
+
+  const [year, month] = monthValue.split('-').map(Number);
+
+  // Billing cycle selected as Aug 2026:
+  // Start = 25 Jul 2026
+  // End   = 24 Aug 2026
+
+  const startDate = new Date(year, month - 2, 25);
+  const endDate = new Date(year, month - 1, 24);
+
+  return {
+    startDate,
+    endDate,
+    start: formatDateISO(startDate),
+    end: formatDateISO(endDate)
+  };
+}
+
+function formatDateISO(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
+function formatShortDate(date) {
+  return new Intl.DateTimeFormat('en-MY', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric'
+  }).format(date);
+}
+
+function getBillingDates(monthValue) {
+  const cycle = getBillingCycle(monthValue);
+
+  if (!cycle) return [];
+
+  const dates = [];
+  const current = new Date(cycle.startDate);
+
+  while (current <= cycle.endDate) {
+    dates.push({
+      date: formatDateISO(current),
+      day: current.getDate(),
+      month: current.getMonth() + 1,
+      year: current.getFullYear()
+    });
+
+    current.setDate(current.getDate() + 1);
+  }
+
+  return dates;
+}
 const toast=m=>{$('toast').textContent=m;$('toast').classList.remove('hidden');setTimeout(()=>$('toast').classList.add('hidden'),2200)};
 function setStatus(m,type=''){ $('saveStatus').textContent=m;$('saveStatus').className='status '+type; }
 function validateConfig(){return !SUPABASE_URL.includes('PASTE_')&&!SUPABASE_ANON_KEY.includes('PASTE_')}
-async function init(){ $('monthPicker').value=todayMonth(); $('recStart').value=new Date().toISOString().slice(0,10); if(!validateConfig()){$('loginMsg').textContent='Setup needed: open index.html and paste your Supabase Project URL and anon key. See README.md.';return} const {data:{session}}=await sb.auth.getSession(); if(session) await enterApp(session.user); }
+async function init(){ $('monthPicker').value=todayMonth(); updateBillingPeriodText(); $('recStart').value=new Date().toISOString().slice(0,10); if(!validateConfig()){$('loginMsg').textContent='Setup needed: open index.html and paste your Supabase Project URL and anon key. See README.md.';return} const {data:{session}}=await sb.auth.getSession(); if(session) await enterApp(session.user); }
 $('loginBtn').onclick=async()=>{ $('loginMsg').textContent=''; const {data,error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value}); if(error){$('loginMsg').textContent=error.message;return} await enterApp(data.user)};
 $('logoutBtn').onclick=async()=>{await sb.auth.signOut();location.reload()};
 async function enterApp(user){currentUser=user;$('userEmail').textContent=user.email;$('loginView').classList.add('hidden');$('appView').classList.remove('hidden');await Promise.all([loadResidents(),loadItems()]);renderSelectors();renderResidentList();await loadRecurring();renderCalendar();}
@@ -133,20 +227,1383 @@ async function loadResidents(){const {data,error}=await sb.from('residents').sel
 async function loadItems(){const {data,error}=await sb.from('items').select('*').eq('active',true).order('sort_order').order('name');if(error)throw error;items=data||[]}
 function renderSelectors(){const opts='<option value="">Select resident…</option>'+residents.map(r=>`<option value="${r.id}">${esc(r.name)}${r.room_ref?' · '+esc(r.room_ref):''}</option>`).join('');$('residentSelect').innerHTML=opts;$('recResident').innerHTML=opts;$('recItem').innerHTML='<option value="">Select package / item…</option>'+items.filter(i=>['Package','Machine Rental','Service'].includes(i.category)).map(i=>`<option value="${i.id}" data-price="${i.price}">${esc(i.name)} · ${money(i.price)}</option>`).join('')}
 $('recItem').onchange=()=>{const o=$('recItem').selectedOptions[0];if(o?.dataset.price)$('recAmount').value=Number(o.dataset.price).toFixed(2)};
-$('reloadBtn').onclick=loadMonth;$('residentSelect').onchange=loadMonth;$('monthPicker').onchange=loadMonth;
-async function loadMonth(){const resident_id=$('residentSelect').value,month=$('monthPicker').value;if(!resident_id||!month){entries=[];recurring=[];renderCalendar();return}setStatus('Loading…');const start=month+'-01',end=`${month}-${String(daysInMonth(month)).padStart(2,'0')}`;const [e,r]=await Promise.all([sb.from('charge_entries').select('*').eq('resident_id',resident_id).gte('charge_date',start).lte('charge_date',end),sb.from('recurring_charges').select('*, items(name,unit)').eq('resident_id',resident_id).lte('start_date',end).or(`end_date.is.null,end_date.gte.${start}`)]);if(e.error||r.error){setStatus((e.error||r.error).message,'err');return}entries=e.data||[];recurring=(r.data||[]).filter(x=>x.active);renderCalendar();setStatus('Loaded. Changes save automatically.','ok')}
-function groupItems(){const order=['Stock','Machine Rental','Package','Service'];return order.map(c=>[c,items.filter(i=>i.category===c)]).filter(x=>x[1].length)}
-function renderCalendar(){const month=$('monthPicker').value||todayMonth(),days=daysInMonth(month),rid=$('residentSelect').value;let h='<thead><tr><th class="item-col">Item</th><th class="unit-col">Unit</th><th class="price-col">Price</th>';for(let d=1;d<=days;d++)h+=`<th>${d}</th>`;h+='<th class="total-col">Total</th></tr></thead><tbody>';for(const [cat,list] of groupItems()){h+=`<tr class="section-row"><td class="item-col">${esc(cat)}</td><td class="unit-col"></td><td class="price-col"></td>${'<td></td>'.repeat(days)}<td class="total-col"></td></tr>`;for(const it of list){let rowTotal=0;h+=`<tr><td class="item-col">${esc(it.name)}</td><td class="unit-col">${esc(it.unit||'')}</td><td class="price-col">${it.price==null?'—':money(it.price)}</td>`;for(let d=1;d<=days;d++){const date=`${month}-${String(d).padStart(2,'0')}`,en=entries.find(x=>x.item_id===it.id&&x.charge_date===date),q=en?Number(en.quantity):0;rowTotal+=q*Number(en?.unit_price??it.price??0);h+=`<td><input class="qty ${q?'nonzero':''}" type="number" min="0" step="1" value="${q||''}" data-item="${it.id}" data-date="${date}" data-entry="${en?.id||''}" aria-label="${esc(it.name)} ${date}"></td>`}h+=`<td class="total-col">${money(rowTotal)}</td></tr>`}}h+='</tbody>';$('calendarTable').innerHTML=h;$('calendarTitle').textContent=rid?`${residents.find(r=>r.id===rid)?.name||''} · ${month}`:'Calendar Charges';document.querySelectorAll('.qty').forEach(i=>i.addEventListener('change',saveQty));updateSummary()}
-async function saveQty(ev){const input=ev.target,rid=$('residentSelect').value;if(!rid)return;const qty=Number(input.value||0),item=items.find(i=>i.id===input.dataset.item);if(!item)return;setStatus('Saving…');let error;if(qty<=0&&input.dataset.entry){({error}=await sb.from('charge_entries').delete().eq('id',input.dataset.entry))}else if(qty>0){const payload={resident_id:rid,item_id:item.id,charge_date:input.dataset.date,quantity:qty,unit_price:Number(item.price||0),updated_by:currentUser.id};if(input.dataset.entry)({error}=await sb.from('charge_entries').update(payload).eq('id',input.dataset.entry));else {const res=await sb.from('charge_entries').insert({...payload,created_by:currentUser.id}).select().single();error=res.error;if(res.data)input.dataset.entry=res.data.id}}if(error){setStatus(error.message,'err');return}input.classList.toggle('nonzero',qty>0);await loadMonth();setStatus('Saved','ok')}
+$('reloadBtn').onclick=loadMonth;$('residentSelect').onchange=loadMonth;$('monthPicker').onchange = () => {
+  updateBillingPeriodText();
+  loadMonth();
+};
+function updateBillingPeriodText() {
+
+  const month =
+    $('monthPicker').value;
+
+  const cycle =
+    getBillingCycle(month);
+
+  if (!cycle) {
+
+    $('billingPeriodText').textContent = '';
+
+    return;
+  }
+
+  $('billingPeriodText').textContent =
+    `${formatShortDate(cycle.startDate)} – ` +
+    `${formatShortDate(cycle.endDate)}`;
+}
+async function loadMonth() {
+  const resident_id = $('residentSelect').value;
+  const month = $('monthPicker').value;
+
+  if (!resident_id || !month) {
+    entries = [];
+    recurring = [];
+    renderCalendar();
+    return;
+  }
+
+  setStatus('Loading…');
+
+  const cycle = getBillingCycle(month);
+
+  if (!cycle) {
+    setStatus('Invalid billing cycle', 'err');
+    return;
+  }
+
+  const start = cycle.start;
+  const end = cycle.end;
+
+  const [e, r] = await Promise.all([
+    sb
+      .from('charge_entries')
+      .select('*')
+      .eq('resident_id', resident_id)
+      .gte('charge_date', start)
+      .lte('charge_date', end),
+
+    sb
+      .from('recurring_charges')
+      .select('*, items(name,unit)')
+      .eq('resident_id', resident_id)
+      .lte('start_date', end)
+      .or(`end_date.is.null,end_date.gte.${start}`)
+  ]);
+
+  if (e.error || r.error) {
+    setStatus((e.error || r.error).message, 'err');
+    return;
+  }
+
+  entries = e.data || [];
+
+  recurring = (r.data || []).filter(x => x.active);
+
+  renderCalendar();
+
+  setStatus(
+    `Loaded ${formatShortDate(cycle.startDate)} – ${formatShortDate(cycle.endDate)}. Changes save automatically.`,
+    'ok'
+  );
+}function groupItems(){const order=['Stock','Machine Rental','Package','Service'];return order.map(c=>[c,items.filter(i=>i.category===c)]).filter(x=>x[1].length)}
+function renderCalendar() {
+  const month = $('monthPicker').value || todayMonth();
+  const billingDates = getBillingDates(month);
+  const rid = $('residentSelect').value;
+
+  let h = `
+    <thead>
+      <tr>
+        <th class="item-col">Item</th>
+        <th class="unit-col">Unit</th>
+        <th class="price-col">Price</th>
+  `;
+
+  for (const d of billingDates) {
+    h += `<th title="${d.date}">${d.day}</th>`;
+  }
+
+  h += `
+        <th class="total-col">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+  `;
+
+  for (const [cat, list] of groupItems()) {
+
+    h += `
+      <tr class="section-row">
+        <td class="item-col">${esc(cat)}</td>
+        <td class="unit-col"></td>
+        <td class="price-col"></td>
+        ${'<td></td>'.repeat(billingDates.length)}
+        <td class="total-col"></td>
+      </tr>
+    `;
+
+    for (const it of list) {
+
+      let rowTotal = 0;
+
+      h += `
+        <tr>
+          <td class="item-col">${esc(it.name)}</td>
+          <td class="unit-col">${esc(it.unit || '')}</td>
+          <td class="price-col">
+            ${it.price == null ? '—' : money(it.price)}
+          </td>
+      `;
+
+      for (const d of billingDates) {
+
+        const date = d.date;
+
+        const en = entries.find(
+          x =>
+            x.item_id === it.id &&
+            x.charge_date === date
+        );
+
+        const q = en ? Number(en.quantity) : 0;
+
+        rowTotal +=
+          q *
+          Number(
+            en?.unit_price ??
+            it.price ??
+            0
+          );
+
+        h += `
+          <td>
+            <input
+              class="qty ${q ? 'nonzero' : ''}"
+              type="number"
+              min="0"
+              step="1"
+              value="${q || ''}"
+              data-item="${it.id}"
+              data-date="${date}"
+              data-entry="${en?.id || ''}"
+              aria-label="${esc(it.name)} ${date}"
+              title="${date}"
+            >
+          </td>
+        `;
+      }
+
+      h += `
+          <td class="total-col">
+            ${money(rowTotal)}
+          </td>
+        </tr>
+      `;
+    }
+  }
+
+  h += '</tbody>';
+
+  $('calendarTable').innerHTML = h;
+
+  const cycle = getBillingCycle(month);
+
+  if (rid && cycle) {
+
+    const resident =
+      residents.find(r => r.id === rid);
+
+    $('calendarTitle').textContent =
+      `${resident?.name || ''} · ` +
+      `${formatShortDate(cycle.startDate)} – ` +
+      `${formatShortDate(cycle.endDate)}`;
+
+  } else {
+
+    $('calendarTitle').textContent =
+      'Calendar Charges';
+  }
+
+  document
+    .querySelectorAll('.qty')
+    .forEach(i =>
+      i.addEventListener('change', saveQty)
+    );
+
+  updateSummary();
+}async function saveQty(ev){const input=ev.target,rid=$('residentSelect').value;if(!rid)return;const qty=Number(input.value||0),item=items.find(i=>i.id===input.dataset.item);if(!item)return;setStatus('Saving…');let error;if(qty<=0&&input.dataset.entry){({error}=await sb.from('charge_entries').delete().eq('id',input.dataset.entry))}else if(qty>0){const payload={resident_id:rid,item_id:item.id,charge_date:input.dataset.date,quantity:qty,unit_price:Number(item.price||0),updated_by:currentUser.id};if(input.dataset.entry)({error}=await sb.from('charge_entries').update(payload).eq('id',input.dataset.entry));else {const res=await sb.from('charge_entries').insert({...payload,created_by:currentUser.id}).select().single();error=res.error;if(res.data)input.dataset.entry=res.data.id}}if(error){setStatus(error.message,'err');return}input.classList.toggle('nonzero',qty>0);await loadMonth();setStatus('Saved','ok')}
 function updateSummary(){let usage=0,count=0;for(const e of entries){usage+=Number(e.quantity)*Number(e.unit_price);if(Number(e.quantity)>0)count++}const rec=recurring.reduce((s,x)=>s+Number(x.amount),0);$('usageTotal').textContent=money(usage);$('recurringTotal').textContent=money(rec);$('grandTotal').textContent=money(usage+rec);$('entryCount').textContent=count+recurring.length}
 $('addRecurringBtn').onclick=async()=>{const resident_id=$('recResident').value,item_id=$('recItem').value,amount=Number($('recAmount').value),start_date=$('recStart').value;if(!resident_id||!item_id||!amount||!start_date)return toast('Complete all monthly charge fields');const {error}=await sb.from('recurring_charges').insert({resident_id,item_id,amount,start_date,active:true,created_by:currentUser.id});if(error)return toast(error.message);toast('Monthly charge added');await loadRecurring();if($('residentSelect').value===resident_id)await loadMonth()};
 async function loadRecurring(){const {data,error}=await sb.from('recurring_charges').select('*, residents(name), items(name,unit)').order('created_at',{ascending:false});if(error){toast(error.message);return}const list=data||[];$('recurringList').innerHTML=list.length?list.map(x=>`<div class="row"><div><strong>${esc(x.residents?.name||'')}</strong><br><small>${esc(x.items?.name||'')} · ${money(x.amount)} / month · from ${x.start_date}${x.end_date?' to '+x.end_date:''}</small></div><span class="badge">${x.active?'ACTIVE':'STOPPED'}</span>${x.active?`<button class="btn btn-danger" onclick="stopRecurring('${x.id}')">Stop</button>`:'<span></span>'}</div>`).join(''):'<div class="row"><div><small>No recurring charges yet.</small></div></div>'}
-window.stopRecurring=async id=>{const end=new Date().toISOString().slice(0,10);const {error}=await sb.from('recurring_charges').update({active:false,end_date:end}).eq('id',id);if(error)return toast(error.message);toast('Recurring charge stopped');await loadRecurring();await loadMonth()};
-$('addResidentBtn').onclick=async()=>{const name=$('newResidentName').value.trim(),room_ref=$('newResidentRoom').value.trim();if(!name)return toast('Enter resident name');const {error}=await sb.from('residents').insert({name,room_ref,active:true});if(error)return toast(error.message);$('newResidentName').value='';$('newResidentRoom').value='';await loadResidents();renderSelectors();renderResidentList();toast('Resident added')};
+window.stopRecurring = async id => {
+
+  // First get the recurring charge
+  const { data, error: fetchError } = await sb
+    .from('recurring_charges')
+    .select('start_date')
+    .eq('id', id)
+    .single();
+
+  if (fetchError) {
+    return toast(fetchError.message);
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Prevent end_date from being before start_date
+  const endDate =
+    today < data.start_date
+      ? data.start_date
+      : today;
+
+  const { error } = await sb
+    .from('recurring_charges')
+    .update({
+      active: false,
+      end_date: endDate
+    })
+    .eq('id', id);
+
+  if (error) {
+    return toast(error.message);
+  }
+
+  toast('Recurring charge stopped');
+
+  await loadRecurring();
+  await loadMonth();
+};$('addResidentBtn').onclick=async()=>{const name=$('newResidentName').value.trim(),room_ref=$('newResidentRoom').value.trim();if(!name)return toast('Enter resident name');const {error}=await sb.from('residents').insert({name,room_ref,active:true});if(error)return toast(error.message);$('newResidentName').value='';$('newResidentRoom').value='';await loadResidents();renderSelectors();renderResidentList();toast('Resident added')};
 function renderResidentList(){$('residentList').innerHTML=residents.length?residents.map(r=>`<div class="row"><div><strong>${esc(r.name)}</strong><br><small>${esc(r.room_ref||'No room reference')}</small></div><span class="badge">ACTIVE</span><button class="btn btn-danger" onclick="deactivateResident('${r.id}')">Deactivate</button></div>`).join(''):'<div class="row"><small>No residents yet.</small></div>'}
 window.deactivateResident=async id=>{if(!confirm('Deactivate this resident? Existing records will remain.'))return;const {error}=await sb.from('residents').update({active:false}).eq('id',id);if(error)return toast(error.message);await loadResidents();renderSelectors();renderResidentList();toast('Resident deactivated')};
 $('addItemBtn').onclick=async()=>{const name=$('newItemName').value.trim(),unit=$('newItemUnit').value.trim(),price=$('newItemPrice').value===''?null:Number($('newItemPrice').value),category=$('newItemCategory').value;if(!name)return toast('Enter item name');const {error}=await sb.from('items').insert({name,unit,price,category,active:true,sort_order:999});if(error)return toast(error.message);await loadItems();renderSelectors();renderCalendar();toast('Item added')};
-$('exportBtn').onclick=()=>{const rid=$('residentSelect').value,month=$('monthPicker').value;if(!rid)return toast('Select a resident first');const resident=residents.find(r=>r.id===rid),days=daysInMonth(month),aoa=[['MG Bayan Lepas — Relau Branch of Mintygreen'],['Resident',resident.name],['Room / Ref',resident.room_ref||''],['Billing Month',month],[],['Item','Unit','Price',...Array.from({length:days},(_,i)=>i+1),'Total']];for(const [cat,list] of groupItems()){aoa.push([cat]);for(const it of list){let total=0,row=[it.name,it.unit||'',it.price??''];for(let d=1;d<=days;d++){const date=`${month}-${String(d).padStart(2,'0')}`,e=entries.find(x=>x.item_id===it.id&&x.charge_date===date),q=e?Number(e.quantity):0;row.push(q||'');total+=q*Number(e?.unit_price??it.price??0)}row.push(total);aoa.push(row)}}aoa.push([]);aoa.push(['RECURRING MONTHLY CHARGES']);for(const r of recurring)aoa.push([r.items?.name||'Recurring charge',r.items?.unit||'monthly',r.amount,...Array(days).fill(''),r.amount]);const usage=entries.reduce((s,e)=>s+Number(e.quantity)*Number(e.unit_price),0),rec=recurring.reduce((s,r)=>s+Number(r.amount),0);aoa.push([]);aoa.push(['GRAND TOTAL',...Array(days+2).fill(''),usage+rec]);const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[{wch:32},{wch:10},{wch:12},...Array(days).fill({wch:4}),{wch:14}];const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Monthly Charges');XLSX.writeFile(wb,`${resident.name.replace(/[^a-z0-9]/gi,'_')}_${month}_charges.xlsx`)};
+
+$('exportBtn').onclick = () => {
+
+  const rid = $('residentSelect').value;
+  const month = $('monthPicker').value;
+
+  if (!rid) {
+    return toast('Select a resident first');
+  }
+
+  const resident =
+    residents.find(r => r.id === rid);
+
+  const cycle = getBillingCycle(month);
+  const billingDates = getBillingDates(month);
+
+  const periodText =
+    `${formatShortDate(cycle.startDate)} - ` +
+    `${formatShortDate(cycle.endDate)}`;
+
+  const aoa = [
+
+    ['MG Bayan Lepas — Relau Branch of Mintygreen'],
+
+    ['Resident', resident.name],
+
+    [
+      'Room / Ref',
+      resident.room_ref || ''
+    ],
+
+    [
+      'Billing Cycle',
+      month
+    ],
+
+    [
+      'Period',
+      periodText
+    ],
+
+    [],
+
+    [
+      'Item',
+      'Unit',
+      'Price',
+      ...billingDates.map(d => d.day),
+      'Total'
+    ]
+  ];
+
+  for (const [cat, list] of groupItems()) {
+
+    aoa.push([cat]);
+
+    for (const it of list) {
+
+      let total = 0;
+
+      const row = [
+        it.name,
+        it.unit || '',
+        it.price ?? ''
+      ];
+
+      for (const d of billingDates) {
+
+        const e = entries.find(
+          x =>
+            x.item_id === it.id &&
+            x.charge_date === d.date
+        );
+
+        const q =
+          e ?
+          Number(e.quantity) :
+          0;
+
+        row.push(q || '');
+
+        total +=
+          q *
+          Number(
+            e?.unit_price ??
+            it.price ??
+            0
+          );
+      }
+
+      row.push(total);
+
+      aoa.push(row);
+    }
+  }
+
+  aoa.push([]);
+
+  aoa.push([
+    'RECURRING MONTHLY CHARGES'
+  ]);
+
+  for (const r of recurring) {
+
+    aoa.push([
+      r.items?.name || 'Recurring charge',
+      r.items?.unit || 'monthly',
+      r.amount,
+      ...Array(billingDates.length).fill(''),
+      r.amount
+    ]);
+  }
+
+  const usage =
+    entries.reduce(
+      (s, e) =>
+        s +
+        Number(e.quantity) *
+        Number(e.unit_price),
+      0
+    );
+
+  const rec =
+    recurring.reduce(
+      (s, r) =>
+        s + Number(r.amount),
+      0
+    );
+
+  aoa.push([]);
+
+  aoa.push([
+    'GRAND TOTAL',
+    ...Array(billingDates.length + 2).fill(''),
+    usage + rec
+  ]);
+
+  const ws =
+    XLSX.utils.aoa_to_sheet(aoa);
+
+  ws['!cols'] = [
+    { wch: 32 },
+    { wch: 10 },
+    { wch: 12 },
+    ...Array(billingDates.length).fill({
+      wch: 4
+    }),
+    { wch: 14 }
+  ];
+
+  const wb =
+    XLSX.utils.book_new();
+
+  XLSX.utils.book_append_sheet(
+    wb,
+    ws,
+    'Monthly Charges'
+  );
+
+  XLSX.writeFile(
+    wb,
+    `${resident.name.replace(/[^a-z0-9]/gi, '_')}_${month}_charges.xlsx`
+  );
+};
+
+$('exportPdfBtn').onclick = () => {
+
+  const rid = $('residentSelect').value;
+  const month = $('monthPicker').value;
+
+  if (!rid) {
+    return toast('Select a resident first');
+  }
+
+  if (!month) {
+    return toast('Select a billing cycle first');
+  }
+
+  const resident = residents.find(r => r.id === rid);
+
+  if (!resident) {
+    return toast('Resident not found');
+  }
+
+  const cycle = getBillingCycle(month);
+  const billingDates = getBillingDates(month);
+
+  if (!cycle) {
+    return toast('Invalid billing cycle');
+  }
+
+  const { jsPDF } = window.jspdf;
+
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'mm',
+    format: 'a4'
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  const periodText =
+    `${formatShortDate(cycle.startDate)} - ` +
+    `${formatShortDate(cycle.endDate)}`;
+
+  // -------------------------
+  // HEADER
+  // -------------------------
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+
+  doc.text(
+    'MG Bayan Lepas',
+    10,
+    10
+  );
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+
+  doc.text(
+    'Relau Branch of Mintygreen',
+    10,
+    15
+  );
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+
+  doc.text(
+    'Monthly Charges',
+    pageWidth - 10,
+    10,
+    { align: 'right' }
+  );
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+
+  doc.text(
+    `Resident: ${resident.name}`,
+    10,
+    22
+  );
+
+  doc.text(
+    `Room / Ref: ${resident.room_ref || '-'}`,
+    10,
+    27
+  );
+
+  doc.text(
+    `Billing Cycle: ${month}`,
+    90,
+    22
+  );
+
+  doc.text(
+    `Period: ${periodText}`,
+    90,
+    27
+  );
+
+  // -------------------------
+  // TABLE HEADER
+  // -------------------------
+
+  const headRow = [
+    'Item',
+    'Unit',
+    'Price',
+    ...billingDates.map(d => String(d.day)),
+    'Total'
+  ];
+
+  const bodyRows = [];
+
+  // -------------------------
+  // NORMAL USAGE ITEMS
+  // -------------------------
+
+  for (const [cat, list] of groupItems()) {
+
+    bodyRows.push([
+      {
+        content: cat,
+        colSpan: billingDates.length + 4,
+        styles: {
+          fontStyle: 'bold',
+          fillColor: [235, 243, 241]
+        }
+      }
+    ]);
+
+    for (const it of list) {
+
+      let rowTotal = 0;
+
+      const row = [
+        it.name,
+        it.unit || '',
+        it.price == null
+          ? ''
+          : Number(it.price).toFixed(2)
+      ];
+
+      for (const d of billingDates) {
+
+        const e = entries.find(
+          x =>
+            x.item_id === it.id &&
+            x.charge_date === d.date
+        );
+
+        const qty = e
+          ? Number(e.quantity)
+          : 0;
+
+        row.push(
+          qty ? String(qty) : ''
+        );
+
+        rowTotal +=
+          qty *
+          Number(
+            e?.unit_price ??
+            it.price ??
+            0
+          );
+      }
+
+      row.push(
+        rowTotal
+          ? rowTotal.toFixed(2)
+          : ''
+      );
+
+      bodyRows.push(row);
+    }
+  }
+
+  // -------------------------
+  // RECURRING CHARGES
+  // -------------------------
+
+  if (recurring.length) {
+
+    bodyRows.push([
+      {
+        content: 'MONTHLY / RECURRING CHARGES',
+        colSpan: billingDates.length + 4,
+        styles: {
+          fontStyle: 'bold',
+          fillColor: [225, 238, 235]
+        }
+      }
+    ]);
+
+    for (const r of recurring) {
+
+      bodyRows.push([
+        r.items?.name || 'Recurring charge',
+        r.items?.unit || 'monthly',
+        Number(r.amount).toFixed(2),
+        ...Array(billingDates.length).fill(''),
+        Number(r.amount).toFixed(2)
+      ]);
+    }
+  }
+
+  // -------------------------
+  // GRAND TOTAL
+  // -------------------------
+
+  const usageTotal = entries.reduce(
+    (sum, e) =>
+      sum +
+      Number(e.quantity) *
+      Number(e.unit_price),
+    0
+  );
+
+  const recurringTotal = recurring.reduce(
+    (sum, r) =>
+      sum + Number(r.amount),
+    0
+  );
+
+  const grandTotal =
+    usageTotal + recurringTotal;
+
+  // -------------------------
+  // CREATE TABLE
+  // -------------------------
+
+  doc.autoTable({
+    startY: 32,
+
+    head: [headRow],
+
+    body: bodyRows,
+
+    theme: 'grid',
+
+    styles: {
+      font: 'helvetica',
+      fontSize: 5,
+      cellPadding: 0.8,
+      halign: 'center',
+      valign: 'middle',
+      lineWidth: 0.1,
+      overflow: 'linebreak'
+    },
+
+    headStyles: {
+      fillColor: [46, 106, 91],
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 5
+    },
+
+    columnStyles: {
+      0: {
+        cellWidth: 31,
+        halign: 'left'
+      },
+
+      1: {
+        cellWidth: 10
+      },
+
+      2: {
+        cellWidth: 11
+      },
+
+      [billingDates.length + 3]: {
+        cellWidth: 14
+      }
+    },
+
+    didParseCell: function(data) {
+
+      // Make item names left aligned
+      if (
+        data.section === 'body' &&
+        data.column.index === 0
+      ) {
+        data.cell.styles.halign = 'left';
+      }
+    },
+
+    margin: {
+      left: 6,
+      right: 6
+    }
+  });
+
+  // -------------------------
+  // TOTAL
+  // -------------------------
+
+  let finalY = doc.lastAutoTable.finalY + 6;
+
+  // If table is close to bottom,
+  // create another page for total.
+  if (finalY > 190) {
+
+    doc.addPage();
+
+    finalY = 15;
+  }
+
+  doc.setFont(
+    'helvetica',
+    'bold'
+  );
+
+  doc.setFontSize(11);
+
+  doc.text(
+    `Grand Total: RM ${grandTotal.toFixed(2)}`,
+    pageWidth - 10,
+    finalY,
+    { align: 'right' }
+  );
+
+  doc.setFont(
+    'helvetica',
+    'normal'
+  );
+
+  doc.setFontSize(7);
+
+  doc.text(
+    `Usage Charges: RM ${usageTotal.toFixed(2)}`,
+    pageWidth - 10,
+    finalY + 5,
+    { align: 'right' }
+  );
+
+  doc.text(
+    `Recurring Charges: RM ${recurringTotal.toFixed(2)}`,
+    pageWidth - 10,
+    finalY + 10,
+    { align: 'right' }
+  );
+
+  // -------------------------
+  // FOOTER / PAGE NUMBERS
+  // -------------------------
+
+  const pages =
+    doc.internal.getNumberOfPages();
+
+  for (
+    let i = 1;
+    i <= pages;
+    i++
+  ) {
+
+    doc.setPage(i);
+
+    doc.setFontSize(6);
+    doc.setTextColor(100);
+
+    doc.text(
+      `MG Bayan Lepas - Monthly Charges`,
+      8,
+      205
+    );
+
+    doc.text(
+      `Page ${i} of ${pages}`,
+      pageWidth - 8,
+      205,
+      { align: 'right' }
+    );
+  }
+
+  // -------------------------
+  // DOWNLOAD
+  // -------------------------
+
+  const safeName =
+    resident.name
+      .replace(/[^a-z0-9]/gi, '_');
+
+  doc.save(
+    `${safeName}_${month}_charges.pdf`
+  );
+};
+// ==========================================
+// FINANCE-FRIENDLY PDF
+// ==========================================
+
+$('exportFinancePdfBtn').onclick = () => {
+
+  const rid = $('residentSelect').value;
+  const month = $('monthPicker').value;
+
+  if (!rid) {
+    return toast('Select a resident first');
+  }
+
+  if (!month) {
+    return toast('Select a billing cycle first');
+  }
+
+  const resident = residents.find(
+    r => r.id === rid
+  );
+
+  if (!resident) {
+    return toast('Resident not found');
+  }
+
+  const cycle = getBillingCycle(month);
+
+  if (!cycle) {
+    return toast('Invalid billing cycle');
+  }
+
+  const { jsPDF } = window.jspdf;
+
+  // Finance version uses portrait A4
+  // because it does not need 31 date columns.
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4'
+  });
+
+  const pageWidth =
+    doc.internal.pageSize.getWidth();
+
+  const periodText =
+    `${formatShortDate(cycle.startDate)} - ` +
+    `${formatShortDate(cycle.endDate)}`;
+
+  // ==========================================
+  // HEADER
+  // ==========================================
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+
+  doc.text(
+    'MG Bayan Lepas',
+    14,
+    15
+  );
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+
+  doc.text(
+    'Relau Branch of Mintygreen',
+    14,
+    21
+  );
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+
+  doc.text(
+    'Monthly Charges Summary',
+    pageWidth - 14,
+    15,
+    {
+      align: 'right'
+    }
+  );
+
+  // ==========================================
+  // RESIDENT INFORMATION
+  // ==========================================
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+
+  doc.text(
+    `Resident: ${resident.name}`,
+    14,
+    32
+  );
+
+  doc.text(
+    `Room / Ref: ${resident.room_ref || '-'}`,
+    14,
+    38
+  );
+
+  doc.text(
+    `Billing Cycle: ${month}`,
+    110,
+    32
+  );
+
+  doc.text(
+    `Period: ${periodText}`,
+    110,
+    38
+  );
+
+  // ==========================================
+  // BUILD USAGE CHARGE LIST
+  // ==========================================
+
+  const usageRows = [];
+
+  let usageTotal = 0;
+
+  for (const e of entries) {
+
+    const item = items.find(
+      i => i.id === e.item_id
+    );
+
+    if (!item) {
+      continue;
+    }
+
+    const qty =
+      Number(e.quantity) || 0;
+
+    if (qty <= 0) {
+      continue;
+    }
+
+    const unitPrice =
+      Number(e.unit_price) || 0;
+
+    const amount =
+      qty * unitPrice;
+
+    usageTotal += amount;
+
+    const chargeDate =
+      new Date(
+        e.charge_date + 'T00:00:00'
+      );
+
+    const displayDate =
+      new Intl.DateTimeFormat(
+        'en-MY',
+        {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric'
+        }
+      ).format(chargeDate);
+
+    usageRows.push([
+      item.name,
+      displayDate,
+      qty,
+      `RM ${unitPrice.toFixed(2)}`,
+      `RM ${amount.toFixed(2)}`
+    ]);
+  }
+
+  // Sort by date
+  usageRows.sort((a, b) => {
+
+    const da =
+      new Date(a[1]);
+
+    const db =
+      new Date(b[1]);
+
+    return da - db;
+  });
+
+  // ==========================================
+  // USAGE CHARGES TABLE
+  // ==========================================
+
+  doc.setFont(
+    'helvetica',
+    'bold'
+  );
+
+  doc.setFontSize(10);
+
+  doc.text(
+    'Usage Charges',
+    14,
+    50
+  );
+
+  if (usageRows.length > 0) {
+
+    doc.autoTable({
+
+      startY: 54,
+
+      head: [[
+        'Item',
+        'Date',
+        'Qty',
+        'Unit Price',
+        'Amount'
+      ]],
+
+      body: usageRows,
+
+      theme: 'grid',
+
+      styles: {
+        font: 'helvetica',
+        fontSize: 8,
+        cellPadding: 2,
+        valign: 'middle'
+      },
+
+      headStyles: {
+        fillColor: [46, 106, 91],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold'
+      },
+
+      columnStyles: {
+
+        0: {
+          cellWidth: 70
+        },
+
+        1: {
+          cellWidth: 30,
+          halign: 'center'
+        },
+
+        2: {
+          cellWidth: 15,
+          halign: 'center'
+        },
+
+        3: {
+          cellWidth: 28,
+          halign: 'right'
+        },
+
+        4: {
+          cellWidth: 30,
+          halign: 'right'
+        }
+
+      },
+
+      margin: {
+        left: 14,
+        right: 14
+      }
+
+    });
+
+  } else {
+
+    doc.setFont(
+      'helvetica',
+      'normal'
+    );
+
+    doc.setFontSize(8);
+
+    doc.text(
+      'No usage charges recorded for this billing cycle.',
+      14,
+      58
+    );
+  }
+
+  // ==========================================
+  // DETERMINE NEXT POSITION
+  // ==========================================
+
+  let nextY;
+
+  if (
+    usageRows.length > 0 &&
+    doc.lastAutoTable
+  ) {
+
+    nextY =
+      doc.lastAutoTable.finalY + 10;
+
+  } else {
+
+    nextY = 68;
+  }
+
+  // ==========================================
+  // RECURRING CHARGES
+  // ==========================================
+
+  const recurringRows = [];
+
+  let recurringTotal = 0;
+
+  for (const r of recurring) {
+
+    const amount =
+      Number(r.amount) || 0;
+
+    recurringTotal += amount;
+
+    recurringRows.push([
+
+      r.items?.name ||
+        'Recurring charge',
+
+      r.items?.unit ||
+        'Monthly',
+
+      `RM ${amount.toFixed(2)}`
+    ]);
+  }
+
+  // Check if enough room remains
+  if (nextY > 230) {
+
+    doc.addPage();
+
+    nextY = 20;
+  }
+
+  doc.setFont(
+    'helvetica',
+    'bold'
+  );
+
+  doc.setFontSize(10);
+
+  doc.text(
+    'Monthly / Recurring Charges',
+    14,
+    nextY
+  );
+
+  if (recurringRows.length > 0) {
+
+    doc.autoTable({
+
+      startY: nextY + 4,
+
+      head: [[
+        'Description',
+        'Type',
+        'Amount'
+      ]],
+
+      body: recurringRows,
+
+      theme: 'grid',
+
+      styles: {
+        font: 'helvetica',
+        fontSize: 8,
+        cellPadding: 2
+      },
+
+      headStyles: {
+        fillColor: [46, 106, 91],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold'
+      },
+
+      columnStyles: {
+
+        0: {
+          cellWidth: 105
+        },
+
+        1: {
+          cellWidth: 35
+        },
+
+        2: {
+          cellWidth: 35,
+          halign: 'right'
+        }
+
+      },
+
+      margin: {
+        left: 14,
+        right: 14
+      }
+
+    });
+
+    nextY =
+      doc.lastAutoTable.finalY + 10;
+
+  } else {
+
+    doc.setFont(
+      'helvetica',
+      'normal'
+    );
+
+    doc.setFontSize(8);
+
+    doc.text(
+      'No recurring charges for this billing cycle.',
+      14,
+      nextY + 6
+    );
+
+    nextY += 18;
+  }
+
+  // ==========================================
+  // TOTALS
+  // ==========================================
+
+  const grandTotal =
+    usageTotal +
+    recurringTotal;
+
+  if (nextY > 245) {
+
+    doc.addPage();
+
+    nextY = 25;
+  }
+
+  doc.setDrawColor(180);
+
+  doc.line(
+    110,
+    nextY,
+    pageWidth - 14,
+    nextY
+  );
+
+  nextY += 7;
+
+  doc.setFont(
+    'helvetica',
+    'normal'
+  );
+
+  doc.setFontSize(9);
+
+  doc.text(
+    'Usage Charges:',
+    115,
+    nextY
+  );
+
+  doc.text(
+    `RM ${usageTotal.toFixed(2)}`,
+    pageWidth - 14,
+    nextY,
+    {
+      align: 'right'
+    }
+  );
+
+  nextY += 6;
+
+  doc.text(
+    'Recurring Charges:',
+    115,
+    nextY
+  );
+
+  doc.text(
+    `RM ${recurringTotal.toFixed(2)}`,
+    pageWidth - 14,
+    nextY,
+    {
+      align: 'right'
+    }
+  );
+
+  nextY += 8;
+
+  doc.setDrawColor(100);
+
+  doc.line(
+    110,
+    nextY - 3,
+    pageWidth - 14,
+    nextY - 3
+  );
+
+  doc.setFont(
+    'helvetica',
+    'bold'
+  );
+
+  doc.setFontSize(12);
+
+  doc.text(
+    'GRAND TOTAL:',
+    115,
+    nextY + 3
+  );
+
+  doc.text(
+    `RM ${grandTotal.toFixed(2)}`,
+    pageWidth - 14,
+    nextY + 3,
+    {
+      align: 'right'
+    }
+  );
+
+  // ==========================================
+  // FOOTER
+  // ==========================================
+
+  const pages =
+    doc.internal.getNumberOfPages();
+
+  for (
+    let p = 1;
+    p <= pages;
+    p++
+  ) {
+
+    doc.setPage(p);
+
+    const pageHeight =
+      doc.internal.pageSize.getHeight();
+
+    doc.setFont(
+      'helvetica',
+      'normal'
+    );
+
+    doc.setFontSize(7);
+
+    doc.setTextColor(100);
+
+    doc.text(
+      'MG Bayan Lepas - Monthly Charges Summary',
+      14,
+      pageHeight - 10
+    );
+
+    doc.text(
+      `Page ${p} of ${pages}`,
+      pageWidth - 14,
+      pageHeight - 10,
+      {
+        align: 'right'
+      }
+    );
+  }
+
+  // ==========================================
+  // SAVE PDF
+  // ==========================================
+
+  const safeName =
+    resident.name
+      .replace(
+        /[^a-z0-9]/gi,
+        '_'
+      );
+
+  doc.save(
+    `${safeName}_${month}_Finance_Summary.pdf`
+  );
+};
 $('printBtn').onclick=()=>{if(!$('residentSelect').value)return toast('Select a resident first');window.print()};
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');['charges','recurring','setup'].forEach(t=>$(t+'Tab').classList.toggle('hidden',t!==b.dataset.tab));if(b.dataset.tab==='recurring')loadRecurring()});
 function esc(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
