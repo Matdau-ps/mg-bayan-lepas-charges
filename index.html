@@ -42,17 +42,22 @@
   <div id="appView" class="hidden">
     <header class="topbar">
       <div class="brand">MG Bayan Lepas<small>Relau Branch · Mintygreen</small></div>
-      <div class="spacer"></div><span id="userEmail" class="user-chip"></span>
+<div class="spacer"></div><span id="userEmail" class="user-chip"></span><span id="userRole" class="badge"></span>
       <button id="logoutBtn" class="btn btn-light">Log out</button>
     </header>
 
     <main class="wrap">
-      <div class="tabs">
-        <button class="btn tab active" data-tab="charges">Monthly Charges</button>
-        <button class="btn tab" data-tab="recurring">Monthly Packages</button>
-        <button class="btn tab" data-tab="setup">Residents & Items</button>
-      </div>
+<div class="tabs">
+  <button class="btn tab active" data-tab="charges">Monthly Charges</button>
 
+  <button class="btn tab admin-only" data-tab="recurring">
+    Monthly Packages
+  </button>
+
+  <button class="btn tab admin-only" data-tab="setup">
+    Residents & Items
+  </button>
+</div>
       <section id="chargesTab">
         <div class="card toolbar">
           <div class="tfield"><label>Resident</label><select id="residentSelect"></select></div>
@@ -137,7 +142,7 @@ const SUPABASE_URL = 'https://qppkqopbtaswfwspjxsc.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_VpqWrjBfc0XoawJ8CGYrcw_GdGL4bPy';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const $=id=>document.getElementById(id);
-let currentUser=null,residents=[],items=[],entries=[],recurring=[],saveTimer=null;
+let currentUser=null,residents=[],items=[],entries=[],recurring=[],currentUserRole='staff',saveTimer=null;
 const money=n=>new Intl.NumberFormat('en-MY',{style:'currency',currency:'MYR'}).format(Number(n||0)).replace('MYR','RM');
 const todayMonth = () => {
   const today = new Date();
@@ -222,7 +227,10 @@ function validateConfig(){return !SUPABASE_URL.includes('PASTE_')&&!SUPABASE_ANO
 async function init(){ $('monthPicker').value=todayMonth(); updateBillingPeriodText(); $('recStart').value=new Date().toISOString().slice(0,10); if(!validateConfig()){$('loginMsg').textContent='Setup needed: open index.html and paste your Supabase Project URL and anon key. See README.md.';return} const {data:{session}}=await sb.auth.getSession(); if(session) await enterApp(session.user); }
 $('loginBtn').onclick=async()=>{ $('loginMsg').textContent=''; const {data,error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value}); if(error){$('loginMsg').textContent=error.message;return} await enterApp(data.user)};
 $('logoutBtn').onclick=async()=>{await sb.auth.signOut();location.reload()};
-async function enterApp(user){currentUser=user;$('userEmail').textContent=user.email;$('loginView').classList.add('hidden');$('appView').classList.remove('hidden');await Promise.all([loadResidents(),loadItems()]);renderSelectors();renderResidentList();await loadRecurring();renderCalendar();}
+async function enterApp(user){
+  currentUser=user;
+  await loadCurrentUserRole();
+  $('userEmail').textContent=user.email;$('loginView').classList.add('hidden');$('appView').classList.remove('hidden');await Promise.all([loadResidents(),loadItems()]);renderSelectors();renderResidentList();await loadRecurring();renderCalendar();}
 async function loadResidents(){const {data,error}=await sb.from('residents').select('*').eq('active',true).order('name');if(error)throw error;residents=data||[]}
 async function loadItems(){const {data,error}=await sb.from('items').select('*').eq('active',true).order('sort_order').order('name');if(error)throw error;items=data||[]}
 function renderSelectors(){const opts='<option value="">Select resident…</option>'+residents.map(r=>`<option value="${r.id}">${esc(r.name)}${r.room_ref?' · '+esc(r.room_ref):''}</option>`).join('');$('residentSelect').innerHTML=opts;$('recResident').innerHTML=opts;$('recItem').innerHTML='<option value="">Select package / item…</option>'+items.filter(i=>['Package','Machine Rental','Service'].includes(i.category)).map(i=>`<option value="${i.id}" data-price="${i.price}">${esc(i.name)} · ${money(i.price)}</option>`).join('')}
@@ -1607,6 +1615,54 @@ $('exportFinancePdfBtn').onclick = () => {
 $('printBtn').onclick=()=>{if(!$('residentSelect').value)return toast('Select a resident first');window.print()};
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');['charges','recurring','setup'].forEach(t=>$(t+'Tab').classList.toggle('hidden',t!==b.dataset.tab));if(b.dataset.tab==='recurring')loadRecurring()});
 function esc(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+async function loadCurrentUserRole() {
+
+  if (!currentUser) {
+    currentUserRole = 'staff';
+    return;
+  }
+
+  const { data, error } = await sb
+    .from('profiles')
+    .select('role')
+    .eq('id', currentUser.id)
+    .single();
+
+  if (error) {
+    console.error('Could not load user role:', error);
+    currentUserRole = 'staff';
+    return;
+  }
+
+  currentUserRole = data?.role || 'staff';
+
+  applyRoleAccess();
+}
+function applyRoleAccess() {
+
+  const isAdmin =
+    currentUserRole === 'admin';
+
+  document
+    .querySelectorAll('.admin-only')
+    .forEach(el => {
+
+      el.classList.toggle(
+        'hidden',
+        !isAdmin
+      );
+
+    });
+
+  if ($('userRole')) {
+
+    $('userRole').textContent =
+      isAdmin
+        ? 'ADMIN'
+        : 'STAFF';
+
+  }
+}
 init();
 </script>
 </body>
