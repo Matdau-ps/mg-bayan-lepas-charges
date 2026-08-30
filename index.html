@@ -57,6 +57,10 @@
   <button class="btn tab admin-only" data-tab="setup">
     Residents & Items
   </button>
+  <button class="btn tab admin-only" data-tab="audit">
+  Audit History
+</button>
+
 </div>
       <section id="chargesTab">
         <div class="card toolbar">
@@ -148,6 +152,71 @@
           </div>
         </div>
       </section>
+      <section id="auditTab" class="hidden">
+
+  <div class="card panel">
+
+    <h3>Audit History</h3>
+
+    <p class="note">
+      View changes made to resident charge entries.
+    </p>
+
+    <div class="card toolbar">
+
+      <div class="tfield">
+        <label>Resident</label>
+        <select id="auditResident">
+          <option value="">All Residents</option>
+        </select>
+      </div>
+
+      <div class="tfield">
+        <label>Billing Cycle</label>
+        <input id="auditMonth" type="month">
+      </div>
+
+      <button
+        id="loadAuditBtn"
+        class="btn btn-primary"
+      >
+        Load Audit History
+      </button>
+
+    </div>
+
+    <div style="overflow-x:auto; margin-top:16px;">
+
+      <table id="auditTable">
+
+        <thead>
+          <tr>
+            <th>Date / Time</th>
+            <th>Resident</th>
+            <th>Item</th>
+            <th>Charge Date</th>
+            <th>Action</th>
+            <th>Old Qty</th>
+            <th>New Qty</th>
+            <th>Changed By</th>
+          </tr>
+        </thead>
+
+        <tbody id="auditTableBody">
+          <tr>
+            <td colspan="8">
+              Select a billing cycle and click Load Audit History.
+            </td>
+          </tr>
+        </tbody>
+
+      </table>
+
+    </div>
+
+  </div>
+
+</section>
     </main>
   </div>
   <div id="toast" class="toast hidden"></div>
@@ -239,7 +308,16 @@ function getBillingDates(monthValue) {
 const toast=m=>{$('toast').textContent=m;$('toast').classList.remove('hidden');setTimeout(()=>$('toast').classList.add('hidden'),2200)};
 function setStatus(m,type=''){ $('saveStatus').textContent=m;$('saveStatus').className='status '+type; }
 function validateConfig(){return !SUPABASE_URL.includes('PASTE_')&&!SUPABASE_ANON_KEY.includes('PASTE_')}
-async function init(){ $('monthPicker').value=todayMonth(); updateBillingPeriodText(); $('recStart').value=new Date().toISOString().slice(0,10); if(!validateConfig()){$('loginMsg').textContent='Setup needed: open index.html and paste your Supabase Project URL and anon key. See README.md.';return} const {data:{session}}=await sb.auth.getSession(); if(session) await enterApp(session.user); }
+async function init(){
+
+  $('monthPicker').value = todayMonth();
+
+  if ($('auditMonth')) {
+    $('auditMonth').value = todayMonth();
+  }
+
+  updateBillingPeriodText();
+  $('recStart').value=new Date().toISOString().slice(0,10); if(!validateConfig()){$('loginMsg').textContent='Setup needed: open index.html and paste your Supabase Project URL and anon key. See README.md.';return} const {data:{session}}=await sb.auth.getSession(); if(session) await enterApp(session.user); }
 $('loginBtn').onclick=async()=>{ $('loginMsg').textContent=''; const {data,error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value}); if(error){$('loginMsg').textContent=error.message;return} await enterApp(data.user)};
 $('logoutBtn').onclick=async()=>{await sb.auth.signOut();location.reload()};
 async function enterApp(user){
@@ -248,8 +326,35 @@ async function enterApp(user){
   $('userEmail').textContent=user.email;$('loginView').classList.add('hidden');$('appView').classList.remove('hidden');await Promise.all([loadResidents(),loadItems()]);renderSelectors();renderResidentList();await loadRecurring();renderCalendar();}
 async function loadResidents(){const {data,error}=await sb.from('residents').select('*').eq('active',true).order('name');if(error)throw error;residents=data||[]}
 async function loadItems(){const {data,error}=await sb.from('items').select('*').eq('active',true).order('sort_order').order('name');if(error)throw error;items=data||[]}
-function renderSelectors(){const opts='<option value="">Select resident…</option>'+residents.map(r=>`<option value="${r.id}">${esc(r.name)}${r.room_ref?' · '+esc(r.room_ref):''}</option>`).join('');$('residentSelect').innerHTML=opts;$('recResident').innerHTML=opts;$('recItem').innerHTML='<option value="">Select package / item…</option>'+items.filter(i=>['Package','Machine Rental','Service'].includes(i.category)).map(i=>`<option value="${i.id}" data-price="${i.price}">${esc(i.name)} · ${money(i.price)}</option>`).join('')}
-$('recItem').onchange=()=>{const o=$('recItem').selectedOptions[0];if(o?.dataset.price)$('recAmount').value=Number(o.dataset.price).toFixed(2)};
+function renderSelectors() {
+
+  const opts =
+    '<option value="">Select resident...</option>' +
+    residents
+      .map(
+        r =>
+          `<option value="${r.id}">${esc(r.name)}</option>`
+      )
+      .join('');
+
+  $('residentSelect').innerHTML = opts;
+
+  if ($('recResident')) {
+    $('recResident').innerHTML = opts;
+  }
+
+  if ($('auditResident')) {
+
+    $('auditResident').innerHTML =
+      '<option value="">All Residents</option>' +
+      residents
+        .map(
+          r =>
+            `<option value="${r.id}">${esc(r.name)}</option>`
+        )
+        .join('');
+  }
+}$('recItem').onchange=()=>{const o=$('recItem').selectedOptions[0];if(o?.dataset.price)$('recAmount').value=Number(o.dataset.price).toFixed(2)};
 $('reloadBtn').onclick=loadMonth;$('residentSelect').onchange=loadMonth;$('monthPicker').onchange = () => {
   updateBillingPeriodText();
   loadMonth();
@@ -1632,8 +1737,87 @@ $('exportFinancePdfBtn').onclick = () => {
   );
 };
 $('printBtn').onclick=()=>{if(!$('residentSelect').value)return toast('Select a resident first');window.print()};
-document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');['charges','recurring','setup'].forEach(t=>$(t+'Tab').classList.toggle('hidden',t!==b.dataset.tab));if(b.dataset.tab==='recurring')loadRecurring()});
-function esc(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+document
+  .querySelectorAll('.tab')
+  .forEach(b => {
+
+    b.onclick = () => {
+
+      const requestedTab =
+        b.dataset.tab;
+
+      // Staff cannot open Admin-only tabs
+      if (
+        currentUserRole !== 'admin' &&
+        (
+          requestedTab === 'recurring' ||
+          requestedTab === 'setup' ||
+          requestedTab === 'audit'
+        )
+      ) {
+
+        toast('Admin access required');
+        return;
+      }
+
+      // Remove active state from all tabs
+      document
+        .querySelectorAll('.tab')
+        .forEach(x =>
+          x.classList.remove('active')
+        );
+
+      // Activate clicked tab
+      b.classList.add('active');
+
+      // Show selected section
+      [
+        'charges',
+        'recurring',
+        'setup',
+        'audit'
+      ].forEach(t => {
+
+        const section =
+          $(t + 'Tab');
+
+        if (section) {
+          section.classList.toggle(
+            'hidden',
+            t !== requestedTab
+          );
+        }
+
+      });
+
+      // Existing recurring-tab behavior
+      if (
+        requestedTab === 'recurring'
+      ) {
+        loadRecurring();
+      }
+
+      // Audit History behavior
+      if (
+        requestedTab === 'audit'
+      ) {
+
+        if (
+          $('auditMonth') &&
+          !$('auditMonth').value
+        ) {
+          $('auditMonth').value =
+            $('monthPicker').value ||
+            todayMonth();
+        }
+
+        loadAuditHistory();
+      }
+
+    };
+
+  });
+  function esc(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
 async function loadCurrentUserRole() {
 
   if (!currentUser) {
@@ -1841,6 +2025,183 @@ $('cycleLockBtn').onclick = async () => {
 
   applyBillingCycleStatus();
 };
+async function loadAuditHistory() {
+
+  if (currentUserRole !== 'admin') {
+    return toast('Admin access required');
+  }
+
+  const month = $('auditMonth').value;
+  const residentId = $('auditResident').value;
+
+  if (!month) {
+    return toast('Select a billing cycle first');
+  }
+
+  const cycle = getBillingCycle(month);
+
+  if (!cycle) {
+    return toast('Invalid billing cycle');
+  }
+
+  let query = sb
+    .from('charge_audit_log')
+    .select(`
+      id,
+      charge_entry_id,
+      resident_id,
+      item_id,
+      charge_date,
+      action,
+      old_quantity,
+      new_quantity,
+      changed_by,
+      changed_at,
+      residents(name),
+      items(name)
+    `)
+    .gte('charge_date', cycle.start)
+    .lte('charge_date', cycle.end)
+    .order('changed_at', {
+      ascending: false
+    });
+
+  if (residentId) {
+    query = query.eq(
+      'resident_id',
+      residentId
+    );
+  }
+
+  const { data, error } =
+    await query;
+
+  if (error) {
+    console.error(
+      'Could not load audit history:',
+      error
+    );
+
+    $('auditTableBody').innerHTML = `
+      <tr>
+        <td colspan="8">
+          ${esc(error.message)}
+        </td>
+      </tr>
+    `;
+
+    return;
+  }
+
+  const logs = data || [];
+
+  if (!logs.length) {
+
+    $('auditTableBody').innerHTML = `
+      <tr>
+        <td colspan="8">
+          No audit history found for this billing cycle.
+        </td>
+      </tr>
+    `;
+
+    return;
+  }
+
+  $('auditTableBody').innerHTML =
+    logs.map(log => {
+
+      const changedDate =
+        new Date(log.changed_at);
+
+      const changedText =
+        changedDate.toLocaleString(
+          'en-MY',
+          {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          }
+        );
+
+      const chargeDate =
+        new Date(
+          log.charge_date +
+          'T00:00:00'
+        );
+
+      const chargeDateText =
+        chargeDate.toLocaleDateString(
+          'en-MY',
+          {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric'
+          }
+        );
+
+      return `
+        <tr>
+
+          <td>
+            ${esc(changedText)}
+          </td>
+
+          <td>
+            ${esc(
+              log.residents?.name ||
+              '-'
+            )}
+          </td>
+
+          <td>
+            ${esc(
+              log.items?.name ||
+              '-'
+            )}
+          </td>
+
+          <td>
+            ${esc(chargeDateText)}
+          </td>
+
+          <td>
+            <strong>
+              ${esc(log.action)}
+            </strong>
+          </td>
+
+          <td>
+            ${
+              log.old_quantity == null
+                ? '-'
+                : esc(log.old_quantity)
+            }
+          </td>
+
+          <td>
+            ${
+              log.new_quantity == null
+                ? '-'
+                : esc(log.new_quantity)
+            }
+          </td>
+
+          <td>
+            ${esc(
+              log.changed_by ||
+              '-'
+            )}
+          </td>
+
+        </tr>
+      `;
+
+    }).join('');
+}
+$('loadAuditBtn').onclick = loadAuditHistory;
 
 init();
 </script>
