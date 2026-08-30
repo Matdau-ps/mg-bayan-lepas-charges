@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MG Bayan Lepas — Monthly Charges</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    :root{--green:#176b5b;--green2:#0f5548;--mint:#eaf6f3;--bg:#f4f7f6;--card:#fff;--text:#20302c;--muted:#6c7a76;--border:#dbe4e1;--red:#b42318;--yellow:#8a5b00;--shadow:0 8px 24px rgba(25,70,60,.08)}
+    *{box-sizing:border-box} body{margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--text)}
+    button,input,select{font:inherit} .hidden{display:none!important}
+    .topbar{position:sticky;top:0;z-index:30;background:var(--green2);color:#fff;padding:12px 18px;display:flex;align-items:center;gap:12px;box-shadow:0 2px 12px rgba(0,0,0,.12)}
+    .brand{font-weight:850}.brand small{display:block;font-weight:500;opacity:.8;font-size:11px}.spacer{flex:1}.user-chip{font-size:12px;opacity:.9}.btn{border:0;border-radius:9px;padding:10px 13px;font-weight:750;cursor:pointer}.btn-primary{background:var(--green);color:white}.btn-light{background:white;color:var(--green2)}.btn-ghost{background:transparent;color:inherit;border:1px solid currentColor}.btn-danger{background:#fff0ef;color:var(--red);border:1px solid #efc8c4}
+    .wrap{max-width:1550px;margin:18px auto;padding:0 16px}.card{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow)}
+    .login{max-width:420px;margin:10vh auto;padding:26px}.login h1{margin:0 0 5px}.sub{color:var(--muted);font-size:13px;margin-bottom:20px}.field{margin-bottom:14px}.field label{display:block;font-size:12px;font-weight:800;margin-bottom:6px}.field input,.field select,.toolbar select,.toolbar input{width:100%;border:1px solid #c9d5d1;border-radius:9px;padding:10px 11px;background:white;outline:none}.field input:focus,.field select:focus,.toolbar select:focus,.toolbar input:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(23,107,91,.1)}
+    .toolbar{padding:14px;display:grid;grid-template-columns:minmax(200px,1.4fr) 150px auto auto auto;gap:10px;align-items:end;margin-bottom:12px}.toolbar .tfield label{display:block;font-size:11px;font-weight:800;color:var(--muted);margin-bottom:5px}
+    .status{font-size:12px;color:var(--muted);padding:0 4px 10px}.status.ok{color:var(--green)}.status.err{color:var(--red)}
+    .summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}.kpi{padding:14px}.kpi span{display:block;font-size:11px;color:var(--muted);font-weight:800}.kpi strong{display:block;font-size:20px;margin-top:3px}
+    .table-card{overflow:hidden}.table-head{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}.table-head h2{font-size:15px;margin:0}.table-head small{color:var(--muted)}
+    .scroll{overflow:auto;max-height:68vh}.calendar{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;font-size:11px}.calendar th,.calendar td{border-right:1px solid var(--border);border-bottom:1px solid var(--border);height:34px;padding:3px;text-align:center;background:white}.calendar thead th{position:sticky;top:0;z-index:10;background:#f0f7f5;font-weight:850}.calendar .item-col{position:sticky;left:0;z-index:12;text-align:left;min-width:230px;max-width:230px;padding-left:9px}.calendar thead .item-col{z-index:20}.calendar .unit-col{position:sticky;left:230px;z-index:12;min-width:65px;background:white}.calendar thead .unit-col{z-index:20;background:#f0f7f5}.calendar .price-col{position:sticky;left:295px;z-index:12;min-width:78px;background:white;font-weight:700}.calendar thead .price-col{z-index:20;background:#f0f7f5}.calendar .total-col{position:sticky;right:0;z-index:12;min-width:90px;background:#f8fbfa;font-weight:800}.calendar thead .total-col{z-index:20;background:#dff0eb}.qty{width:38px;height:26px;border:1px solid transparent;background:transparent;text-align:center;border-radius:5px;padding:2px}.qty:hover{border-color:#ccd9d5;background:#fff}.qty:focus{border-color:var(--green);outline:none;background:#fff;box-shadow:0 0 0 2px rgba(23,107,91,.1)}.qty.nonzero{background:#eaf6f3;color:var(--green2);font-weight:800}.section-row td{background:#edf3f1!important;font-weight:850;text-align:left!important;padding-left:10px!important;height:30px}.section-row .item-col{background:#edf3f1!important}
+    .tabs{display:flex;gap:8px;margin:0 0 12px}.tab{background:white;border:1px solid var(--border);color:var(--text)}.tab.active{background:var(--green);color:#fff;border-color:var(--green)}
+    .panel{padding:16px}.panel h3{margin:0 0 12px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.list{border:1px solid var(--border);border-radius:10px;overflow:hidden}.row{display:grid;grid-template-columns:1fr auto auto;gap:10px;padding:10px;border-bottom:1px solid var(--border);align-items:center}.row:last-child{border:0}.row small{color:var(--muted)}
+    .badge{display:inline-block;padding:3px 7px;border-radius:999px;background:var(--mint);color:var(--green2);font-size:10px;font-weight:800}.toast{position:fixed;right:18px;bottom:18px;z-index:60;background:#20302c;color:#fff;padding:11px 14px;border-radius:9px;box-shadow:var(--shadow);font-size:12px}.note{font-size:12px;color:var(--muted);line-height:1.5}
+    @media(max-width:850px){.toolbar{grid-template-columns:1fr 1fr}.summary{grid-template-columns:1fr 1fr}.topbar{flex-wrap:wrap}.calendar .item-col{min-width:175px;max-width:175px}.calendar .unit-col{left:175px}.calendar .price-col{left:240px}.grid2{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <section id="loginView" class="wrap">
+    <div class="card login">
+      <h1>MG Bayan Lepas</h1>
+      <div class="sub">Relau Branch of Mintygreen · Monthly Charges</div>
+      <div class="field"><label>Email</label><input id="email" type="email" autocomplete="email" placeholder="staff@company.com"></div>
+      <div class="field"><label>Password</label><input id="password" type="password" autocomplete="current-password" placeholder="••••••••"></div>
+      <button id="loginBtn" class="btn btn-primary" style="width:100%">Log in</button>
+      <p id="loginMsg" class="note"></p>
+    </div>
+  </section>
+
+  <div id="appView" class="hidden">
+    <header class="topbar">
+      <div class="brand">MG Bayan Lepas<small>Relau Branch · Mintygreen</small></div>
+      <div class="spacer"></div><span id="userEmail" class="user-chip"></span>
+      <button id="logoutBtn" class="btn btn-light">Log out</button>
+    </header>
+
+    <main class="wrap">
+      <div class="tabs">
+        <button class="btn tab active" data-tab="charges">Monthly Charges</button>
+        <button class="btn tab" data-tab="recurring">Monthly Packages</button>
+        <button class="btn tab" data-tab="setup">Residents & Items</button>
+      </div>
+
+      <section id="chargesTab">
+        <div class="card toolbar">
+          <div class="tfield"><label>Resident</label><select id="residentSelect"></select></div>
+          <div class="tfield"><label>Billing Month</label><input id="monthPicker" type="month"></div>
+          <button id="reloadBtn" class="btn btn-primary">Load</button>
+          <button id="exportBtn" class="btn btn-light" style="border:1px solid var(--border)">Export Excel</button>
+          <button id="printBtn" class="btn btn-light" style="border:1px solid var(--border)">Print / PDF</button>
+        </div>
+        <div id="saveStatus" class="status">Select a resident to begin.</div>
+        <div class="summary">
+          <div class="card kpi"><span>Stock / Usage Charges</span><strong id="usageTotal">RM 0.00</strong></div>
+          <div class="card kpi"><span>Recurring Packages</span><strong id="recurringTotal">RM 0.00</strong></div>
+          <div class="card kpi"><span>Month Total</span><strong id="grandTotal">RM 0.00</strong></div>
+          <div class="card kpi"><span>Entries</span><strong id="entryCount">0</strong></div>
+        </div>
+        <div class="card table-card">
+          <div class="table-head"><h2 id="calendarTitle">Calendar Charges</h2><small>Enter quantity under the date used. Changes save automatically.</small></div>
+          <div class="scroll"><table id="calendarTable" class="calendar"></table></div>
+        </div>
+      </section>
+
+      <section id="recurringTab" class="hidden">
+        <div class="card panel">
+          <h3>Monthly Packages / Repeat Charges</h3>
+          <p class="note">Add a charge once. It will appear automatically every month from the start date until you stop it.</p>
+          <div class="grid2">
+            <div>
+              <div class="field"><label>Resident</label><select id="recResident"></select></div>
+              <div class="field"><label>Package / Item</label><select id="recItem"></select></div>
+              <div class="field"><label>Monthly Amount (RM)</label><input id="recAmount" type="number" step="0.01" min="0"></div>
+              <div class="field"><label>Start Date</label><input id="recStart" type="date"></div>
+              <button id="addRecurringBtn" class="btn btn-primary">Add Monthly Charge</button>
+            </div>
+            <div><div id="recurringList" class="list"></div></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="setupTab" class="hidden">
+        <div class="grid2">
+          <div class="card panel">
+            <h3>Residents</h3>
+            <div class="field"><label>Resident Name</label><input id="newResidentName" placeholder="e.g. Resident A"></div>
+            <div class="field"><label>Room / Reference</label><input id="newResidentRoom" placeholder="e.g. N16"></div>
+            <button id="addResidentBtn" class="btn btn-primary">Add Resident</button>
+            <div id="residentList" class="list" style="margin-top:14px"></div>
+          </div>
+          <div class="card panel">
+            <h3>Charge Items</h3>
+            <p class="note">Your current manual-form stock list is preloaded by the database setup script. Add new items here when needed.</p>
+            <div class="field"><label>Item</label><input id="newItemName"></div>
+            <div class="field"><label>Unit</label><input id="newItemUnit" placeholder="pc / pk / bottle / monthly"></div>
+            <div class="field"><label>Price (RM)</label><input id="newItemPrice" type="number" step="0.01" min="0"></div>
+            <div class="field"><label>Category</label><select id="newItemCategory"><option>Stock</option><option>Machine Rental</option><option>Package</option><option>Service</option></select></div>
+            <button id="addItemBtn" class="btn btn-primary">Add Item</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div id="toast" class="toast hidden"></div>
+
+<script>
+const SUPABASE_URL = 'https://qppkqopbtaswfwspjxsc.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_VpqWrjBfc0XoawJ8CGYrcw_GdGL4bPy';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const $=id=>document.getElementById(id);
+let currentUser=null,residents=[],items=[],entries=[],recurring=[],saveTimer=null;
+const money=n=>new Intl.NumberFormat('en-MY',{style:'currency',currency:'MYR'}).format(Number(n||0)).replace('MYR','RM');
+const todayMonth=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`};
+const daysInMonth=m=>{const [y,mo]=m.split('-').map(Number);return new Date(y,mo,0).getDate()};
+const toast=m=>{$('toast').textContent=m;$('toast').classList.remove('hidden');setTimeout(()=>$('toast').classList.add('hidden'),2200)};
+function setStatus(m,type=''){ $('saveStatus').textContent=m;$('saveStatus').className='status '+type; }
+function validateConfig(){return !SUPABASE_URL.includes('PASTE_')&&!SUPABASE_ANON_KEY.includes('PASTE_')}
+async function init(){ $('monthPicker').value=todayMonth(); $('recStart').value=new Date().toISOString().slice(0,10); if(!validateConfig()){$('loginMsg').textContent='Setup needed: open index.html and paste your Supabase Project URL and anon key. See README.md.';return} const {data:{session}}=await sb.auth.getSession(); if(session) await enterApp(session.user); }
+$('loginBtn').onclick=async()=>{ $('loginMsg').textContent=''; const {data,error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value}); if(error){$('loginMsg').textContent=error.message;return} await enterApp(data.user)};
+$('logoutBtn').onclick=async()=>{await sb.auth.signOut();location.reload()};
+async function enterApp(user){currentUser=user;$('userEmail').textContent=user.email;$('loginView').classList.add('hidden');$('appView').classList.remove('hidden');await Promise.all([loadResidents(),loadItems()]);renderSelectors();renderResidentList();await loadRecurring();renderCalendar();}
+async function loadResidents(){const {data,error}=await sb.from('residents').select('*').eq('active',true).order('name');if(error)throw error;residents=data||[]}
+async function loadItems(){const {data,error}=await sb.from('items').select('*').eq('active',true).order('sort_order').order('name');if(error)throw error;items=data||[]}
+function renderSelectors(){const opts='<option value="">Select resident…</option>'+residents.map(r=>`<option value="${r.id}">${esc(r.name)}${r.room_ref?' · '+esc(r.room_ref):''}</option>`).join('');$('residentSelect').innerHTML=opts;$('recResident').innerHTML=opts;$('recItem').innerHTML='<option value="">Select package / item…</option>'+items.filter(i=>['Package','Machine Rental','Service'].includes(i.category)).map(i=>`<option value="${i.id}" data-price="${i.price}">${esc(i.name)} · ${money(i.price)}</option>`).join('')}
+$('recItem').onchange=()=>{const o=$('recItem').selectedOptions[0];if(o?.dataset.price)$('recAmount').value=Number(o.dataset.price).toFixed(2)};
+$('reloadBtn').onclick=loadMonth;$('residentSelect').onchange=loadMonth;$('monthPicker').onchange=loadMonth;
+async function loadMonth(){const resident_id=$('residentSelect').value,month=$('monthPicker').value;if(!resident_id||!month){entries=[];recurring=[];renderCalendar();return}setStatus('Loading…');const start=month+'-01',end=`${month}-${String(daysInMonth(month)).padStart(2,'0')}`;const [e,r]=await Promise.all([sb.from('charge_entries').select('*').eq('resident_id',resident_id).gte('charge_date',start).lte('charge_date',end),sb.from('recurring_charges').select('*, items(name,unit)').eq('resident_id',resident_id).lte('start_date',end).or(`end_date.is.null,end_date.gte.${start}`)]);if(e.error||r.error){setStatus((e.error||r.error).message,'err');return}entries=e.data||[];recurring=(r.data||[]).filter(x=>x.active);renderCalendar();setStatus('Loaded. Changes save automatically.','ok')}
+function groupItems(){const order=['Stock','Machine Rental','Package','Service'];return order.map(c=>[c,items.filter(i=>i.category===c)]).filter(x=>x[1].length)}
+function renderCalendar(){const month=$('monthPicker').value||todayMonth(),days=daysInMonth(month),rid=$('residentSelect').value;let h='<thead><tr><th class="item-col">Item</th><th class="unit-col">Unit</th><th class="price-col">Price</th>';for(let d=1;d<=days;d++)h+=`<th>${d}</th>`;h+='<th class="total-col">Total</th></tr></thead><tbody>';for(const [cat,list] of groupItems()){h+=`<tr class="section-row"><td class="item-col">${esc(cat)}</td><td class="unit-col"></td><td class="price-col"></td>${'<td></td>'.repeat(days)}<td class="total-col"></td></tr>`;for(const it of list){let rowTotal=0;h+=`<tr><td class="item-col">${esc(it.name)}</td><td class="unit-col">${esc(it.unit||'')}</td><td class="price-col">${it.price==null?'—':money(it.price)}</td>`;for(let d=1;d<=days;d++){const date=`${month}-${String(d).padStart(2,'0')}`,en=entries.find(x=>x.item_id===it.id&&x.charge_date===date),q=en?Number(en.quantity):0;rowTotal+=q*Number(en?.unit_price??it.price??0);h+=`<td><input class="qty ${q?'nonzero':''}" type="number" min="0" step="1" value="${q||''}" data-item="${it.id}" data-date="${date}" data-entry="${en?.id||''}" aria-label="${esc(it.name)} ${date}"></td>`}h+=`<td class="total-col">${money(rowTotal)}</td></tr>`}}h+='</tbody>';$('calendarTable').innerHTML=h;$('calendarTitle').textContent=rid?`${residents.find(r=>r.id===rid)?.name||''} · ${month}`:'Calendar Charges';document.querySelectorAll('.qty').forEach(i=>i.addEventListener('change',saveQty));updateSummary()}
+async function saveQty(ev){const input=ev.target,rid=$('residentSelect').value;if(!rid)return;const qty=Number(input.value||0),item=items.find(i=>i.id===input.dataset.item);if(!item)return;setStatus('Saving…');let error;if(qty<=0&&input.dataset.entry){({error}=await sb.from('charge_entries').delete().eq('id',input.dataset.entry))}else if(qty>0){const payload={resident_id:rid,item_id:item.id,charge_date:input.dataset.date,quantity:qty,unit_price:Number(item.price||0),updated_by:currentUser.id};if(input.dataset.entry)({error}=await sb.from('charge_entries').update(payload).eq('id',input.dataset.entry));else {const res=await sb.from('charge_entries').insert({...payload,created_by:currentUser.id}).select().single();error=res.error;if(res.data)input.dataset.entry=res.data.id}}if(error){setStatus(error.message,'err');return}input.classList.toggle('nonzero',qty>0);await loadMonth();setStatus('Saved','ok')}
+function updateSummary(){let usage=0,count=0;for(const e of entries){usage+=Number(e.quantity)*Number(e.unit_price);if(Number(e.quantity)>0)count++}const rec=recurring.reduce((s,x)=>s+Number(x.amount),0);$('usageTotal').textContent=money(usage);$('recurringTotal').textContent=money(rec);$('grandTotal').textContent=money(usage+rec);$('entryCount').textContent=count+recurring.length}
+$('addRecurringBtn').onclick=async()=>{const resident_id=$('recResident').value,item_id=$('recItem').value,amount=Number($('recAmount').value),start_date=$('recStart').value;if(!resident_id||!item_id||!amount||!start_date)return toast('Complete all monthly charge fields');const {error}=await sb.from('recurring_charges').insert({resident_id,item_id,amount,start_date,active:true,created_by:currentUser.id});if(error)return toast(error.message);toast('Monthly charge added');await loadRecurring();if($('residentSelect').value===resident_id)await loadMonth()};
+async function loadRecurring(){const {data,error}=await sb.from('recurring_charges').select('*, residents(name), items(name,unit)').order('created_at',{ascending:false});if(error){toast(error.message);return}const list=data||[];$('recurringList').innerHTML=list.length?list.map(x=>`<div class="row"><div><strong>${esc(x.residents?.name||'')}</strong><br><small>${esc(x.items?.name||'')} · ${money(x.amount)} / month · from ${x.start_date}${x.end_date?' to '+x.end_date:''}</small></div><span class="badge">${x.active?'ACTIVE':'STOPPED'}</span>${x.active?`<button class="btn btn-danger" onclick="stopRecurring('${x.id}')">Stop</button>`:'<span></span>'}</div>`).join(''):'<div class="row"><div><small>No recurring charges yet.</small></div></div>'}
+window.stopRecurring=async id=>{const end=new Date().toISOString().slice(0,10);const {error}=await sb.from('recurring_charges').update({active:false,end_date:end}).eq('id',id);if(error)return toast(error.message);toast('Recurring charge stopped');await loadRecurring();await loadMonth()};
+$('addResidentBtn').onclick=async()=>{const name=$('newResidentName').value.trim(),room_ref=$('newResidentRoom').value.trim();if(!name)return toast('Enter resident name');const {error}=await sb.from('residents').insert({name,room_ref,active:true});if(error)return toast(error.message);$('newResidentName').value='';$('newResidentRoom').value='';await loadResidents();renderSelectors();renderResidentList();toast('Resident added')};
+function renderResidentList(){$('residentList').innerHTML=residents.length?residents.map(r=>`<div class="row"><div><strong>${esc(r.name)}</strong><br><small>${esc(r.room_ref||'No room reference')}</small></div><span class="badge">ACTIVE</span><button class="btn btn-danger" onclick="deactivateResident('${r.id}')">Deactivate</button></div>`).join(''):'<div class="row"><small>No residents yet.</small></div>'}
+window.deactivateResident=async id=>{if(!confirm('Deactivate this resident? Existing records will remain.'))return;const {error}=await sb.from('residents').update({active:false}).eq('id',id);if(error)return toast(error.message);await loadResidents();renderSelectors();renderResidentList();toast('Resident deactivated')};
+$('addItemBtn').onclick=async()=>{const name=$('newItemName').value.trim(),unit=$('newItemUnit').value.trim(),price=$('newItemPrice').value===''?null:Number($('newItemPrice').value),category=$('newItemCategory').value;if(!name)return toast('Enter item name');const {error}=await sb.from('items').insert({name,unit,price,category,active:true,sort_order:999});if(error)return toast(error.message);await loadItems();renderSelectors();renderCalendar();toast('Item added')};
+$('exportBtn').onclick=()=>{const rid=$('residentSelect').value,month=$('monthPicker').value;if(!rid)return toast('Select a resident first');const resident=residents.find(r=>r.id===rid),days=daysInMonth(month),aoa=[['MG Bayan Lepas — Relau Branch of Mintygreen'],['Resident',resident.name],['Room / Ref',resident.room_ref||''],['Billing Month',month],[],['Item','Unit','Price',...Array.from({length:days},(_,i)=>i+1),'Total']];for(const [cat,list] of groupItems()){aoa.push([cat]);for(const it of list){let total=0,row=[it.name,it.unit||'',it.price??''];for(let d=1;d<=days;d++){const date=`${month}-${String(d).padStart(2,'0')}`,e=entries.find(x=>x.item_id===it.id&&x.charge_date===date),q=e?Number(e.quantity):0;row.push(q||'');total+=q*Number(e?.unit_price??it.price??0)}row.push(total);aoa.push(row)}}aoa.push([]);aoa.push(['RECURRING MONTHLY CHARGES']);for(const r of recurring)aoa.push([r.items?.name||'Recurring charge',r.items?.unit||'monthly',r.amount,...Array(days).fill(''),r.amount]);const usage=entries.reduce((s,e)=>s+Number(e.quantity)*Number(e.unit_price),0),rec=recurring.reduce((s,r)=>s+Number(r.amount),0);aoa.push([]);aoa.push(['GRAND TOTAL',...Array(days+2).fill(''),usage+rec]);const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[{wch:32},{wch:10},{wch:12},...Array(days).fill({wch:4}),{wch:14}];const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Monthly Charges');XLSX.writeFile(wb,`${resident.name.replace(/[^a-z0-9]/gi,'_')}_${month}_charges.xlsx`)};
+$('printBtn').onclick=()=>{if(!$('residentSelect').value)return toast('Select a resident first');window.print()};
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');['charges','recurring','setup'].forEach(t=>$(t+'Tab').classList.toggle('hidden',t!==b.dataset.tab));if(b.dataset.tab==='recurring')loadRecurring()});
+function esc(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+init();
+</script>
+</body>
+</html>
