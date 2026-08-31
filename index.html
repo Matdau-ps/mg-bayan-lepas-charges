@@ -23,6 +23,54 @@
     .panel{padding:16px}.panel h3{margin:0 0 12px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.list{border:1px solid var(--border);border-radius:10px;overflow:hidden}.row{display:grid;grid-template-columns:1fr auto auto;gap:10px;padding:10px;border-bottom:1px solid var(--border);align-items:center}.row:last-child{border:0}.row small{color:var(--muted)}
     .badge{display:inline-block;padding:3px 7px;border-radius:999px;background:var(--mint);color:var(--green2);font-size:10px;font-weight:800}.toast{position:fixed;right:18px;bottom:18px;z-index:60;background:#20302c;color:#fff;padding:11px 14px;border-radius:9px;box-shadow:var(--shadow);font-size:12px}.note{font-size:12px;color:var(--muted);line-height:1.5}
     @media(max-width:850px){.toolbar{grid-template-columns:1fr 1fr}.summary{grid-template-columns:1fr 1fr}.topbar{flex-wrap:wrap}.calendar .item-col{min-width:175px;max-width:175px}.calendar .unit-col{left:175px}.calendar .price-col{left:240px}.grid2{grid-template-columns:1fr}}
+    #auditTable {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 980px;
+}
+
+#auditTable th,
+#auditTable td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+#auditTable th {
+  background: #f7faf9;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+#auditTable tbody tr:hover {
+  background: #f8fbfa;
+}
+
+.audit-action {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.audit-created {
+  background: #e8f7ee;
+  color: #176b3a;
+}
+
+.audit-updated {
+  background: #fff4d8;
+  color: #8a5a00;
+}
+
+.audit-deleted {
+  background: #fdeaea;
+  color: #a12626;
+}
+
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
@@ -112,6 +160,9 @@
         <div class="card table-card">
           <div class="table-head"><h2 id="calendarTitle">Calendar Charges</h2><small>Enter quantity under the date used. Changes save automatically.</small></div>
           <div class="scroll"><table id="calendarTable" class="calendar"></table></div>
+
+          <div id="monthlyRecurringDisplay"></div>
+
         </div>
       </section>
 
@@ -125,6 +176,7 @@
               <div class="field"><label>Package / Item</label><select id="recItem"></select></div>
               <div class="field"><label>Monthly Amount (RM)</label><input id="recAmount" type="number" step="0.01" min="0"></div>
               <div class="field"><label>Start Date</label><input id="recStart" type="date"></div>
+              <div class="field"><label>End Date (optional)</label><input id="recEnd" type="date"></div>
               <button id="addRecurringBtn" class="btn btn-primary">Add Monthly Charge</button>
             </div>
             <div><div id="recurringList" class="list"></div></div>
@@ -159,7 +211,7 @@
     <h3>Audit History</h3>
 
     <p class="note">
-      View changes made to resident charge entries.
+      View changes made to resident charges and monthly packages.
     </p>
 
     <div class="card toolbar">
@@ -196,15 +248,16 @@
             <th>Item</th>
             <th>Charge Date</th>
             <th>Action</th>
-            <th>Old Qty</th>
-            <th>New Qty</th>
+            <th>Old Value</th>
+            <th>New Value</th>
+            <th>Reason</th>
             <th>Changed By</th>
           </tr>
         </thead>
 
         <tbody id="auditTableBody">
           <tr>
-            <td colspan="8">
+            <td colspan="9">
               Select a billing cycle and click Load Audit History.
             </td>
           </tr>
@@ -227,6 +280,8 @@ const SUPABASE_ANON_KEY = 'sb_publishable_VpqWrjBfc0XoawJ8CGYrcw_GdGL4bPy';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const $=id=>document.getElementById(id);
 let currentUser=null,residents=[],items=[],entries=[],recurring=[],currentUserRole='staff',currentCycleLocked=false,saveTimer=null;
+let recurringOverrides = [];
+let recurringPriceHistory = [];
 const money=n=>new Intl.NumberFormat('en-MY',{style:'currency',currency:'MYR'}).format(Number(n||0)).replace('MYR','RM');
 const todayMonth = () => {
   const today = new Date();
@@ -354,6 +409,33 @@ function renderSelectors() {
         )
         .join('');
   }
+const recurringItems = items.filter(item =>
+  [
+    'machine rental',
+    'packages',
+    'package',
+    'services',
+    'service'
+  ].includes(
+    String(item.category || '').trim().toLowerCase()
+  )
+);
+
+$('recItem').innerHTML =
+  '<option value="">Select package / item...</option>' +
+  recurringItems
+    .map(
+      item =>
+        `<option
+          value="${item.id}"
+          data-price="${Number(item.price || 0)}"
+        >
+          ${esc(item.name)}
+        </option>`
+    )
+    .join('');
+  
+
 }$('recItem').onchange=()=>{const o=$('recItem').selectedOptions[0];if(o?.dataset.price)$('recAmount').value=Number(o.dataset.price).toFixed(2)};
 $('reloadBtn').onclick=loadMonth;$('residentSelect').onchange=loadMonth;$('monthPicker').onchange = () => {
   updateBillingPeriodText();
@@ -424,7 +506,9 @@ async function loadMonth() {
 
 entries = e.data || [];
 
-recurring = (r.data || []).filter(x => x.active);
+recurring = r.data || [];
+
+await loadRecurringPricingData();
 
 await loadBillingCycleStatus();
 
@@ -561,11 +645,490 @@ function renderCalendar() {
       i.addEventListener('change', saveQty)
     );
 
-  updateSummary();
+  renderMonthlyRecurringDisplay();
+    updateSummary();
 }async function saveQty(ev){const input=ev.target,rid=$('residentSelect').value;if(!rid)return;const qty=Number(input.value||0),item=items.find(i=>i.id===input.dataset.item);if(!item)return;setStatus('Saving…');let error;if(qty<=0&&input.dataset.entry){({error}=await sb.from('charge_entries').delete().eq('id',input.dataset.entry))}else if(qty>0){const payload={resident_id:rid,item_id:item.id,charge_date:input.dataset.date,quantity:qty,unit_price:Number(item.price||0),updated_by:currentUser.id};if(input.dataset.entry)({error}=await sb.from('charge_entries').update(payload).eq('id',input.dataset.entry));else {const res=await sb.from('charge_entries').insert({...payload,created_by:currentUser.id}).select().single();error=res.error;if(res.data)input.dataset.entry=res.data.id}}if(error){setStatus(error.message,'err');return}input.classList.toggle('nonzero',qty>0);await loadMonth();setStatus('Saved','ok')}
-function updateSummary(){let usage=0,count=0;for(const e of entries){usage+=Number(e.quantity)*Number(e.unit_price);if(Number(e.quantity)>0)count++}const rec=recurring.reduce((s,x)=>s+Number(x.amount),0);$('usageTotal').textContent=money(usage);$('recurringTotal').textContent=money(rec);$('grandTotal').textContent=money(usage+rec);$('entryCount').textContent=count+recurring.length}
-$('addRecurringBtn').onclick=async()=>{const resident_id=$('recResident').value,item_id=$('recItem').value,amount=Number($('recAmount').value),start_date=$('recStart').value;if(!resident_id||!item_id||!amount||!start_date)return toast('Complete all monthly charge fields');const {error}=await sb.from('recurring_charges').insert({resident_id,item_id,amount,start_date,active:true,created_by:currentUser.id});if(error)return toast(error.message);toast('Monthly charge added');await loadRecurring();if($('residentSelect').value===resident_id)await loadMonth()};
-async function loadRecurring(){const {data,error}=await sb.from('recurring_charges').select('*, residents(name), items(name,unit)').order('created_at',{ascending:false});if(error){toast(error.message);return}const list=data||[];$('recurringList').innerHTML=list.length?list.map(x=>`<div class="row"><div><strong>${esc(x.residents?.name||'')}</strong><br><small>${esc(x.items?.name||'')} · ${money(x.amount)} / month · from ${x.start_date}${x.end_date?' to '+x.end_date:''}</small></div><span class="badge">${x.active?'ACTIVE':'STOPPED'}</span>${x.active?`<button class="btn btn-danger" onclick="stopRecurring('${x.id}')">Stop</button>`:'<span></span>'}</div>`).join(''):'<div class="row"><div><small>No recurring charges yet.</small></div></div>'}
+function getRecurringAmountForMonth(recurringCharge, billingMonth) {
+  const originalAmount =
+    Number(recurringCharge.amount) || 0;
+
+  // 1. Find permanent price changes effective
+  //    on or before this billing month
+  const permanentPrices = recurringPriceHistory
+    .filter(
+      p =>
+        p.recurring_charge_id === recurringCharge.id &&
+        p.effective_billing_month <= billingMonth
+    )
+    .sort((a, b) =>
+      b.effective_billing_month.localeCompare(
+        a.effective_billing_month
+      )
+    );
+
+  let normalAmount = originalAmount;
+
+  if (permanentPrices.length) {
+    normalAmount =
+      Number(permanentPrices[0].amount) || 0;
+  }
+
+  // 2. Special month takes highest priority
+  const specialPrice = recurringOverrides.find(
+    o =>
+      o.recurring_charge_id === recurringCharge.id &&
+      o.billing_month === billingMonth
+  );
+
+  if (specialPrice) {
+    return Number(specialPrice.special_amount) || 0;
+  }
+
+  // 3. Otherwise use permanent/current normal amount
+  return normalAmount;
+}
+
+function renderMonthlyRecurringDisplay() {
+  const display = $('monthlyRecurringDisplay');
+
+  if (!display) return;
+
+  const billingMonth =
+    $('monthPicker').value || todayMonth();
+
+  if (!recurring.length) {
+    display.innerHTML = '';
+    return;
+  }
+
+  const [year, monthNum] =
+    billingMonth.split('-');
+
+  const monthText =
+    new Date(
+      Number(year),
+      Number(monthNum) - 1,
+      1
+    ).toLocaleDateString(
+      'en-MY',
+      {
+        month: 'short',
+        year: 'numeric'
+      }
+    );
+
+  let recurringTotal = 0;
+
+  const rows = recurring
+    .map(r => {
+
+      const amount =
+        Number(
+          getRecurringAmountForMonth(
+            r,
+            billingMonth
+          )
+        ) || 0;
+
+      recurringTotal += amount;
+
+      return `
+        <tr>
+          <td>${esc(r.items?.name || 'Recurring charge')}</td>
+          <td>${esc(r.items?.unit || 'Monthly')}</td>
+          <td>${monthText}</td>
+          <td class="total-col">
+            ${money(amount)}
+          </td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  display.innerHTML = `
+    <div style="
+      margin-top:18px;
+      padding-top:16px;
+      border-top:1px solid var(--border);
+    ">
+      <div class="table-head">
+        <h3>Recurring Monthly Charges</h3>
+        <small>
+          Actual recurring charges applied for ${monthText}
+        </small>
+      </div>
+
+      <div class="scroll">
+        <table class="calendar">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Unit</th>
+              <th>Billing Month</th>
+              <th class="total-col">Amount</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            ${rows}
+
+            <tr>
+              <td colspan="3">
+                <strong>Recurring Packages Total</strong>
+              </td>
+              <td class="total-col">
+                <strong>${money(recurringTotal)}</strong>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function updateSummary() {
+  let usage = 0;
+  let count = 0;
+
+  for (const e of entries) {
+    usage +=
+      Number(e.quantity) *
+      Number(e.unit_price);
+
+    if (Number(e.quantity) > 0) {
+      count++;
+    }
+  }
+
+  const billingMonth =
+    $('monthPicker')?.value || todayMonth();
+
+  const rec = recurring.reduce(
+    (sum, recurringCharge) =>
+      sum +
+      getRecurringAmountForMonth(
+        recurringCharge,
+        billingMonth
+      ),
+    0
+  );
+
+  $('usageTotal').textContent =
+    money(usage);
+
+  $('recurringTotal').textContent =
+    money(rec);
+
+  $('grandTotal').textContent =
+    money(usage + rec);
+
+  $('entryCount').textContent =
+    count + recurring.length;
+}
+
+ $('addRecurringBtn').onclick = async () => {
+  const resident_id = $('recResident').value;
+  const item_id = $('recItem').value;
+  const amount = Number($('recAmount').value);
+  const start_date = $('recStart').value;
+  const end_date = $('recEnd').value || null;
+
+  if (!resident_id || !item_id || !amount || !start_date) {
+    return toast('Complete all monthly charge fields');
+  }
+
+  if (end_date && end_date < start_date) {
+    return toast('End Date cannot be earlier than Start Date');
+  }
+
+  const { error } = await sb
+    .from('recurring_charges')
+    .insert({
+      resident_id,
+      item_id,
+      amount,
+      start_date,
+      end_date,
+      active: true,
+      created_by: currentUser.id
+    });
+
+  if (error) {
+    return toast(error.message);
+  }
+
+  toast('Monthly charge added');
+
+  await loadRecurring();
+
+  if ($('residentSelect').value === resident_id) {
+    await loadMonth();
+  }
+};
+async function loadRecurring() {
+  const { data, error } = await sb
+    .from('recurring_charges')
+    .select('*, residents(name), items(name,unit)')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    toast(error.message);
+    return;
+  }
+
+  const list = data || [];
+
+  $('recurringList').innerHTML = list.length
+    ? list
+        .map(
+          x => `
+            <div class="row">
+              <div>
+                <strong>${esc(x.residents?.name || '')}</strong><br>
+                <small>
+                  ${esc(x.items?.name || '')}
+                  · ${money(x.amount)} / month
+                  · from ${x.start_date}
+                  ${x.end_date ? ' to ' + x.end_date : ''}
+                </small>
+              </div>
+
+<div style="display:flex; align-items:center; gap:8px; flex-wrap:nowrap;">
+  <span class="badge">
+    ${x.active ? 'ACTIVE' : 'STOPPED'}
+  </span>
+
+  ${
+    x.active
+      ? `
+        <button
+          class="btn btn-light admin-only"
+          onclick="editRecurringPrice('${x.id}')"
+        >
+          Edit Price
+        </button>
+
+        <button
+          class="btn btn-light admin-only"
+          onclick="setRecurringSpecialMonth('${x.id}')"
+        >
+          Special Month
+        </button>
+
+        <button
+          class="btn btn-danger"
+          onclick="stopRecurring('${x.id}')"
+        >
+          Stop
+        </button>
+      `
+      : ''
+  }
+</div>
+
+            </div>
+          `
+        )
+        .join('')
+    : `
+        <div class="row">
+          <div>
+            <small>No recurring charges yet.</small>
+          </div>
+        </div>
+      `;
+}
+window.editRecurringPrice = async id => {
+  if (currentUserRole !== 'admin') {
+    toast('Admin access only');
+    return;
+  }
+
+  const { data: recurringCharge, error } = await sb
+    .from('recurring_charges')
+    .select('id, amount, resident_id, item_id, residents(name), items(name)')
+    .eq('id', id)
+    .single();
+
+  if (error) {
+    toast(error.message);
+    return;
+  }
+
+  const billingMonth =
+    $('monthPicker')?.value || todayMonth();
+
+  const newAmountText = prompt(
+    `Permanent price change\n\n` +
+    `Resident: ${recurringCharge.residents?.name || ''}\n` +
+    `Package: ${recurringCharge.items?.name || ''}\n` +
+    `Current amount: ${money(recurringCharge.amount)}\n\n` +
+    `Enter the new permanent monthly amount (RM):`,
+    Number(recurringCharge.amount).toFixed(2)
+  );
+
+  if (newAmountText === null) {
+    return;
+  }
+
+  const newAmount = Number(newAmountText);
+
+  if (
+    !Number.isFinite(newAmount) ||
+    newAmount < 0
+  ) {
+    toast('Enter a valid amount');
+    return;
+  }
+
+  const effectiveMonth = prompt(
+    'Effective billing cycle (YYYY-MM):',
+    billingMonth
+  );
+
+  if (effectiveMonth === null) {
+    return;
+  }
+
+  if (!/^\d{4}-\d{2}$/.test(effectiveMonth)) {
+    toast('Use billing cycle format YYYY-MM');
+    return;
+  }
+
+  const reason = prompt(
+    'Reason for permanent price change:',
+    ''
+  );
+
+  if (reason === null) {
+    return;
+  }
+
+  const { error: saveError } = await sb
+    .from('recurring_charge_price_history')
+    .upsert(
+      {
+        recurring_charge_id: id,
+        amount: newAmount,
+        effective_billing_month: effectiveMonth,
+        reason: reason.trim() || null,
+        created_by: currentUser.id
+      },
+      {
+        onConflict:
+          'recurring_charge_id,effective_billing_month'
+      }
+    );
+
+  if (saveError) {
+    toast(saveError.message);
+    return;
+  }
+
+  toast('Permanent price saved');
+
+  await loadRecurringPricingData();
+  await loadRecurring();
+  await loadMonth();
+};
+
+window.setRecurringSpecialMonth = async id => {
+  if (currentUserRole !== 'admin') {
+    toast('Admin access only');
+    return;
+  }
+
+  const { data: recurringCharge, error } = await sb
+    .from('recurring_charges')
+    .select('id, amount, resident_id, item_id, residents(name), items(name)')
+    .eq('id', id)
+    .single();
+
+  if (error) {
+    toast(error.message);
+    return;
+  }
+
+  const billingMonth =
+    $('monthPicker')?.value || todayMonth();
+
+  const specialMonth = prompt(
+    'Special billing cycle (YYYY-MM):',
+    billingMonth
+  );
+
+  if (specialMonth === null) {
+    return;
+  }
+
+  if (!/^\d{4}-\d{2}$/.test(specialMonth)) {
+    toast('Use billing cycle format YYYY-MM');
+    return;
+  }
+
+  const specialAmountText = prompt(
+    `Special month price\n\n` +
+    `Resident: ${recurringCharge.residents?.name || ''}\n` +
+    `Package: ${recurringCharge.items?.name || ''}\n` +
+    `Normal amount: ${money(recurringCharge.amount)}\n\n` +
+    `Enter special amount for ${specialMonth}:`,
+    Number(recurringCharge.amount).toFixed(2)
+  );
+
+  if (specialAmountText === null) {
+    return;
+  }
+
+  const specialAmount = Number(specialAmountText);
+
+  if (
+    !Number.isFinite(specialAmount) ||
+    specialAmount < 0
+  ) {
+    toast('Enter a valid amount');
+    return;
+  }
+
+  const reason = prompt(
+    'Reason for special month price:',
+    ''
+  );
+
+  if (reason === null) {
+    return;
+  }
+
+  const { error: saveError } = await sb
+    .from('recurring_charge_overrides')
+    .upsert(
+      {
+        recurring_charge_id: id,
+        billing_month: specialMonth,
+        special_amount: specialAmount,
+        reason: reason.trim() || null,
+        created_by: currentUser.id
+      },
+      {
+        onConflict:
+          'recurring_charge_id,billing_month'
+      }
+    );
+
+  if (saveError) {
+    toast(saveError.message);
+    return;
+  }
+
+  toast('Special month price saved');
+
+  await loadRecurringPricingData();
+  await loadRecurring();
+  await loadMonth();
+};
+
+
+
 window.stopRecurring = async id => {
 
   // First get the recurring charge
@@ -581,11 +1144,31 @@ window.stopRecurring = async id => {
 
   const today = new Date().toISOString().slice(0, 10);
 
-  // Prevent end_date from being before start_date
-  const endDate =
-    today < data.start_date
-      ? data.start_date
-      : today;
+const enteredDate = prompt(
+  'Enter the last charge date (YYYY-MM-DD):',
+  today
+);
+
+// Cancel was clicked
+if (enteredDate === null) {
+  return;
+}
+
+const endDate = enteredDate.trim();
+
+// Check date format
+if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+  return toast(
+    'Please enter the stop date as YYYY-MM-DD.'
+  );
+}
+
+// Stop date cannot be earlier than package start date
+if (endDate < data.start_date) {
+  return toast(
+    `Stop date cannot be before the start date (${data.start_date}).`
+  );
+}
 
   const { error } = await sb
     .from('recurring_charges')
@@ -604,6 +1187,37 @@ window.stopRecurring = async id => {
   await loadRecurring();
   await loadMonth();
 };$('addResidentBtn').onclick=async()=>{const name=$('newResidentName').value.trim(),room_ref=$('newResidentRoom').value.trim();if(!name)return toast('Enter resident name');const {error}=await sb.from('residents').insert({name,room_ref,active:true});if(error)return toast(error.message);$('newResidentName').value='';$('newResidentRoom').value='';await loadResidents();renderSelectors();renderResidentList();toast('Resident added')};
+
+async function loadRecurringPricingData() {
+  const overrideResult = await sb
+    .from('recurring_charge_overrides')
+    .select('*');
+
+  const priceHistoryResult = await sb
+    .from('recurring_charge_price_history')
+    .select('*');
+
+  if (overrideResult.error) {
+    console.error(
+      'Could not load recurring overrides:',
+      overrideResult.error
+    );
+    recurringOverrides = [];
+  } else {
+    recurringOverrides = overrideResult.data || [];
+  }
+
+  if (priceHistoryResult.error) {
+    console.error(
+      'Could not load recurring price history:',
+      priceHistoryResult.error
+    );
+    recurringPriceHistory = [];
+  } else {
+    recurringPriceHistory =
+      priceHistoryResult.data || [];
+  }
+}
 function renderResidentList(){$('residentList').innerHTML=residents.length?residents.map(r=>`<div class="row"><div><strong>${esc(r.name)}</strong><br><small>${esc(r.room_ref||'No room reference')}</small></div><span class="badge">ACTIVE</span><button class="btn btn-danger" onclick="deactivateResident('${r.id}')">Deactivate</button></div>`).join(''):'<div class="row"><small>No residents yet.</small></div>'}
 window.deactivateResident=async id=>{if(!confirm('Deactivate this resident? Existing records will remain.'))return;const {error}=await sb.from('residents').update({active:false}).eq('id',id);if(error)return toast(error.message);await loadResidents();renderSelectors();renderResidentList();toast('Resident deactivated')};
 $('addItemBtn').onclick=async()=>{const name=$('newItemName').value.trim(),unit=$('newItemUnit').value.trim(),price=$('newItemPrice').value===''?null:Number($('newItemPrice').value),category=$('newItemCategory').value;if(!name)return toast('Enter item name');const {error}=await sb.from('items').insert({name,unit,price,category,active:true,sort_order:999});if(error)return toast(error.message);await loadItems();renderSelectors();renderCalendar();toast('Item added')};
@@ -711,14 +1325,17 @@ $('exportBtn').onclick = () => {
 
   for (const r of recurring) {
 
-    aoa.push([
-      r.items?.name || 'Recurring charge',
-      r.items?.unit || 'monthly',
-      r.amount,
-      ...Array(billingDates.length).fill(''),
-      r.amount
-    ]);
-  }
+  const recurringAmount =
+    getRecurringAmountForMonth(r, month);
+
+  aoa.push([
+    r.items?.name || 'Recurring charge',
+    r.items?.unit || 'monthly',
+    recurringAmount,
+    ...Array(billingDates.length).fill(''),
+    recurringAmount
+  ]);
+}
 
   const usage =
     entries.reduce(
@@ -730,11 +1347,13 @@ $('exportBtn').onclick = () => {
     );
 
   const rec =
-    recurring.reduce(
-      (s, r) =>
-        s + Number(r.amount),
-      0
-    );
+  recurring.reduce(
+    (s, r) =>
+      s + Number(
+        getRecurringAmountForMonth(r, month)
+      ),
+    0
+  );
 
   aoa.push([]);
 
@@ -964,21 +1583,24 @@ $('exportPdfBtn').onclick = () => {
           fillColor: [225, 238, 235]
         }
       }
-    ]);
-
-    for (const r of recurring) {
-
-      bodyRows.push([
-        r.items?.name || 'Recurring charge',
-        r.items?.unit || 'monthly',
-        Number(r.amount).toFixed(2),
-        ...Array(billingDates.length).fill(''),
-        Number(r.amount).toFixed(2)
       ]);
-    }
+
+  for (const r of recurring) {
+
+    const recurringAmount =
+      getRecurringAmountForMonth(r, month);
+
+    bodyRows.push([
+      r.items?.name || 'Recurring charge',
+      r.items?.unit || 'monthly',
+      Number(recurringAmount).toFixed(2),
+      ...Array(billingDates.length).fill(''),
+      Number(recurringAmount).toFixed(2)
+    ]);
+  }
   }
 
-  // -------------------------
+    // -------------------------
   // GRAND TOTAL
   // -------------------------
 
@@ -990,11 +1612,13 @@ $('exportPdfBtn').onclick = () => {
     0
   );
 
-  const recurringTotal = recurring.reduce(
-    (sum, r) =>
-      sum + Number(r.amount),
-    0
-  );
+const recurringTotal = recurring.reduce(
+  (sum, r) =>
+    sum + Number(
+      getRecurringAmountForMonth(r, month)
+    ),
+  0
+);
 
   const grandTotal =
     usageTotal + recurringTotal;
@@ -1467,13 +2091,15 @@ $('exportFinancePdfBtn').onclick = () => {
 
   let recurringTotal = 0;
 
-  for (const r of recurring) {
+for (const r of recurring) {
 
-    const amount =
-      Number(r.amount) || 0;
+  const amount =
+    Number(
+      getRecurringAmountForMonth(r, month)
+    ) || 0;
 
-    recurringTotal += amount;
-
+  recurringTotal += amount;
+  
     recurringRows.push([
 
       r.items?.name ||
@@ -2084,7 +2710,7 @@ async function loadAuditHistory() {
 
     $('auditTableBody').innerHTML = `
       <tr>
-        <td colspan="8">
+        <td colspan="9">
           ${esc(error.message)}
         </td>
       </tr>
@@ -2093,13 +2719,132 @@ async function loadAuditHistory() {
     return;
   }
 
-  const logs = data || [];
+const normalLogs = data || [];
+
+let recurringAuditQuery = sb
+  .from('recurring_charge_audit_log')
+  .select(`
+    id,
+    resident_id,
+    item_id,
+    action,
+    old_amount,
+    new_amount,
+    billing_month,
+    effective_date,
+    reason,
+    changed_by,
+    changed_at
+  `)
+  .eq('billing_month', month)
+  .order('changed_at', {
+    ascending: false
+  });
+
+if (residentId) {
+  recurringAuditQuery =
+    recurringAuditQuery.eq(
+      'resident_id',
+      residentId
+    );
+}
+
+const {
+  data: recurringAuditData,
+  error: recurringAuditError
+} = await recurringAuditQuery;
+
+if (recurringAuditError) {
+  console.error(
+    'Could not load recurring audit history:',
+    recurringAuditError
+  );
+}
+
+const recurringLogs =
+  (recurringAuditData || []).map(log => {
+    const resident =
+      residents.find(
+        r => r.id === log.resident_id
+      );
+
+    const item =
+      items.find(
+        i => i.id === log.item_id
+      );
+
+    return {
+      ...log,
+
+      residents: {
+        name: resident?.name || ''
+      },
+
+      items: {
+        name: item?.name || ''
+      },
+
+      old_quantity: log.old_amount,
+      new_quantity: log.new_amount,
+
+      isRecurringAudit: true
+    };
+  });
+
+const logs = [
+  ...normalLogs,
+  ...recurringLogs
+].sort(
+  (a, b) =>
+    new Date(b.changed_at) -
+    new Date(a.changed_at)
+);
+
+  // Get the users who made these changes
+const userIds = [
+  ...new Set(
+    logs
+      .map(log => log.changed_by)
+      .filter(Boolean)
+  )
+];
+
+const emailById = {};
+
+if (userIds.length) {
+
+  const {
+    data: profileData,
+    error: profileError
+  } = await sb
+    .from('profiles')
+    .select('id,email')
+    .in('id', userIds);
+
+  if (profileError) {
+
+    console.error(
+      'Could not load staff emails:',
+      profileError
+    );
+
+  } else {
+
+    (profileData || []).forEach(profile => {
+
+      emailById[profile.id] =
+        profile.email || profile.id;
+
+    });
+
+  }
+}
 
   if (!logs.length) {
 
     $('auditTableBody').innerHTML = `
       <tr>
-        <td colspan="8">
+        <td colspan="9">
           No audit history found for this billing cycle.
         </td>
       </tr>
@@ -2126,22 +2871,65 @@ async function loadAuditHistory() {
           }
         );
 
-      const chargeDate =
-        new Date(
-          log.charge_date +
-          'T00:00:00'
-        );
+let chargeDateText = '-';
 
-      const chargeDateText =
-        chargeDate.toLocaleDateString(
-          'en-MY',
-          {
-            day: '2-digit',
-            month: 'short',
-            year: 'numeric'
-          }
-        );
+if (log.isRecurringAudit) {
 
+  if (log.effective_date) {
+
+    const effectiveDate =
+      new Date(log.effective_date + 'T00:00:00');
+
+    chargeDateText =
+      effectiveDate.toLocaleDateString(
+        'en-MY',
+        {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric'
+        }
+      );
+
+  } else if (log.billing_month) {
+
+    const [year, monthNum] =
+      log.billing_month.split('-');
+
+    const billingDate =
+      new Date(
+        Number(year),
+        Number(monthNum) - 1,
+        1
+      );
+
+    chargeDateText =
+      billingDate.toLocaleDateString(
+        'en-MY',
+        {
+          month: 'short',
+          year: 'numeric'
+        }
+      );
+  }
+} 
+
+else if (log.charge_date) {
+  const chargeDate =
+    new Date(
+      log.charge_date +
+      'T00:00:00'
+    );
+
+  chargeDateText =
+    chargeDate.toLocaleDateString(
+      'en-MY',
+      {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      }
+    );
+}
       return `
         <tr>
 
@@ -2167,11 +2955,19 @@ async function loadAuditHistory() {
             ${esc(chargeDateText)}
           </td>
 
-          <td>
-            <strong>
-              ${esc(log.action)}
-            </strong>
-          </td>
+<td>
+  <span
+    class="audit-action ${
+log.action.includes('CREATED')
+  ? 'audit-created'
+  : log.action.includes('UPDATED')
+  ? 'audit-updated'
+  : 'audit-deleted'
+    }"
+  >
+    ${esc(log.action)}
+  </span>
+</td>
 
           <td>
             ${
@@ -2190,10 +2986,15 @@ async function loadAuditHistory() {
           </td>
 
           <td>
-            ${esc(
-              log.changed_by ||
-              '-'
-            )}
+            ${esc(log.reason || '-')}
+          </td>
+
+          <td>
+${esc(
+  emailById[log.changed_by] ||
+  log.changed_by ||
+  '-'
+)}
           </td>
 
         </tr>
