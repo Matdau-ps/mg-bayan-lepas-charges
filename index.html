@@ -82,6 +82,21 @@
       <div class="sub">Relau Branch of Mintygreen · Monthly Charges</div>
       <div class="field"><label>Email</label><input id="email" type="email" autocomplete="email" placeholder="staff@company.com"></div>
       <div class="field"><label>Password</label><input id="password" type="password" autocomplete="current-password" placeholder="••••••••"></div>
+      <div id="passwordSetupBox" style="display:none; margin-top:14px;">
+  <div class="field">
+    <label>Create Password</label>
+    <input id="newPassword" type="password" placeholder="Enter new password">
+  </div>
+
+  <div class="field">
+    <label>Confirm Password</label>
+    <input id="confirmPassword" type="password" placeholder="Re-enter new password">
+  </div>
+
+  <button id="setPasswordBtn" class="btn btn-primary" style="width:100%">
+    Set Password
+  </button>
+</div>
       <button id="loginBtn" class="btn btn-primary" style="width:100%">Log in</button>
       <p id="loginMsg" class="note"></p>
     </div>
@@ -372,9 +387,58 @@ async function init(){
   }
 
   updateBillingPeriodText();
-  $('recStart').value=new Date().toISOString().slice(0,10); if(!validateConfig()){$('loginMsg').textContent='Setup needed: open index.html and paste your Supabase Project URL and anon key. See README.md.';return} const {data:{session}}=await sb.auth.getSession(); if(session) await enterApp(session.user); }
+  $('recStart').value=new Date().toISOString().slice(0,10); if(!validateConfig()){$('loginMsg').textContent='Setup needed: open index.html and paste your Supabase Project URL and anon key. See README.md.';return} 
+
+  const { data: { session } } = await sb.auth.getSession();
+
+const inviteMode =
+  window.location.hash.includes('type=invite') ||
+  window.location.search.includes('type=invite');
+
+if (session && inviteMode) {
+  $('passwordSetupBox').style.display = 'block';
+  $('loginBtn').style.display = 'none';
+  $('email').value = session.user.email || '';
+  $('email').disabled = true;
+  $('password').style.display = 'none';
+} else if (session) {
+  await enterApp(session.user);
+} }
 $('loginBtn').onclick=async()=>{ $('loginMsg').textContent=''; const {data,error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value}); if(error){$('loginMsg').textContent=error.message;return} await enterApp(data.user)};
 $('logoutBtn').onclick=async()=>{await sb.auth.signOut();location.reload()};
+$('setPasswordBtn').onclick = async () => {
+  const newPassword = $('newPassword').value;
+  const confirmPassword = $('confirmPassword').value;
+
+  if (!newPassword || !confirmPassword) {
+    $('loginMsg').textContent = 'Please enter and confirm your new password.';
+    return;
+  }
+
+  if (newPassword !== confirmPassword) {
+    $('loginMsg').textContent = 'Passwords do not match.';
+    return;
+  }
+
+  if (newPassword.length < 6) {
+    $('loginMsg').textContent = 'Password must be at least 6 characters.';
+    return;
+  }
+
+  const { data, error } = await sb.auth.updateUser({
+    password: newPassword
+  });
+
+  if (error) {
+    $('loginMsg').textContent = error.message;
+    return;
+  }
+
+  $('loginMsg').textContent = 'Password created successfully.';
+
+  await enterApp(data.user);
+};
+
 async function enterApp(user){
   currentUser=user;
   await loadCurrentUserRole();
