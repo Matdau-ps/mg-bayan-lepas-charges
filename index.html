@@ -456,10 +456,7 @@ if (error) {
   return;
 }
 
-const { error: profileError } = await sb
-  .from('profiles')
-  .update({ password_setup_complete: true })
-  .eq('id', data.user.id);
+const { error: profileError } = await sb.rpc('complete_password_setup');
 
 if (profileError) {
   $('loginMsg').textContent =
