@@ -435,7 +435,7 @@ $('recItem').innerHTML =
     )
     .join('');
   
-
+$('recResident').onchange = loadRecurring;
 }$('recItem').onchange=()=>{const o=$('recItem').selectedOptions[0];if(o?.dataset.price)$('recAmount').value=Number(o.dataset.price).toFixed(2)};
 $('reloadBtn').onclick=loadMonth;$('residentSelect').onchange=loadMonth;$('monthPicker').onchange = () => {
   updateBillingPeriodText();
@@ -877,7 +877,12 @@ async function loadRecurring() {
     return;
   }
 
-  const list = data || [];
+const selectedResidentId = $('recResident').value;
+
+const list = (data || []).filter(x =>
+  !selectedResidentId ||
+  x.resident_id === selectedResidentId
+);
 
   $('recurringList').innerHTML = list.length
     ? list
