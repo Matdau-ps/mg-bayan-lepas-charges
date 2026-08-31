@@ -389,21 +389,43 @@ async function init(){
   updateBillingPeriodText();
   $('recStart').value=new Date().toISOString().slice(0,10); if(!validateConfig()){$('loginMsg').textContent='Setup needed: open index.html and paste your Supabase Project URL and anon key. See README.md.';return} 
 
-  const { data: { session } } = await sb.auth.getSession();
+async function needsPasswordSetup(user) {
+  const { data, error } = await sb
+    .from('profiles')
+    .select('password_setup_complete')
+    .eq('id', user.id)
+    .single();
 
-const inviteMode =
-  window.location.hash.includes('type=invite') ||
-  window.location.search.includes('type=invite');
+  if (error) {
+    console.error('Could not check password setup:', error);
+    return false;
+  }
 
-if (session && inviteMode) {
+  return data.password_setup_complete !== true;
+}
+
+function showPasswordSetup(user) {
   $('passwordSetupBox').style.display = 'block';
   $('loginBtn').style.display = 'none';
-  $('email').value = session.user.email || '';
+
+  $('email').value = user.email || '';
   $('email').disabled = true;
+
   $('password').style.display = 'none';
-} else if (session) {
-  await enterApp(session.user);
-} }
+}
+
+const { data: { session } } = await sb.auth.getSession();
+
+if (session) {
+  const needsSetup = await needsPasswordSetup(session.user);
+
+  if (needsSetup) {
+    showPasswordSetup(session.user);
+  } else {
+    await enterApp(session.user);
+  }
+}  
+ }
 $('loginBtn').onclick=async()=>{ $('loginMsg').textContent=''; const {data,error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value}); if(error){$('loginMsg').textContent=error.message;return} await enterApp(data.user)};
 $('logoutBtn').onclick=async()=>{await sb.auth.signOut();location.reload()};
 $('setPasswordBtn').onclick = async () => {
@@ -425,18 +447,29 @@ $('setPasswordBtn').onclick = async () => {
     return;
   }
 
-  const { data, error } = await sb.auth.updateUser({
-    password: newPassword
-  });
+ const { data, error } = await sb.auth.updateUser({
+  password: newPassword
+});
 
-  if (error) {
-    $('loginMsg').textContent = error.message;
-    return;
-  }
+if (error) {
+  $('loginMsg').textContent = error.message;
+  return;
+}
 
-  $('loginMsg').textContent = 'Password created successfully.';
+const { error: profileError } = await sb
+  .from('profiles')
+  .update({ password_setup_complete: true })
+  .eq('id', data.user.id);
 
-  await enterApp(data.user);
+if (profileError) {
+  $('loginMsg').textContent =
+    'Password was created, but account setup could not be completed. Please contact Admin.';
+  return;
+}
+
+$('loginMsg').textContent = 'Password created successfully.';
+
+await enterApp(data.user);
 };
 
 async function enterApp(user){
