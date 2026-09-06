@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "io.github.matdau_ps.twa",
+        "sha256_cert_fingerprints": ["91:0D:50:66:61:1E:B3:FA:62:48:E3:11:AE:20:7D:1D:CF:44:C3:04:F7:C7:5B:EB:EE:F9:49:26:48:14:1D:C9"]
+      }
+    }]
