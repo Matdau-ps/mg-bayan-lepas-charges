@@ -4,11 +4,19 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MG Bayan Lepas — Monthly Charges</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#0f5548" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="MG Bayan Lepas" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
     :root{--green:#176b5b;--green2:#0f5548;--mint:#eaf6f3;--bg:#f4f7f6;--card:#fff;--text:#20302c;--muted:#6c7a76;--border:#dbe4e1;--red:#b42318;--yellow:#8a5b00;--shadow:0 8px 24px rgba(25,70,60,.08)}
-    *{box-sizing:border-box} body{margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--text)}
+    *{box-sizing:border-box} html{overflow-x:hidden} body{margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--text);overflow-x:hidden;width:100%}
     button,input,select{font:inherit} .hidden{display:none!important}
     .topbar{position:sticky;top:0;z-index:30;background:var(--green2);color:#fff;padding:12px 18px;display:flex;align-items:center;gap:12px;box-shadow:0 2px 12px rgba(0,0,0,.12)}
     .brand{font-weight:850}.brand small{display:block;font-weight:500;opacity:.8;font-size:11px}.spacer{flex:1}.user-chip{font-size:12px;opacity:.9}.btn{border:0;border-radius:9px;padding:10px 13px;font-weight:750;cursor:pointer}.btn-primary{background:var(--green);color:white}.btn-light{background:white;color:var(--green2)}.btn-ghost{background:transparent;color:inherit;border:1px solid currentColor}.btn-danger{background:#fff0ef;color:var(--red);border:1px solid #efc8c4}
@@ -19,10 +27,24 @@
     .summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}.kpi{padding:14px}.kpi span{display:block;font-size:11px;color:var(--muted);font-weight:800}.kpi strong{display:block;font-size:20px;margin-top:3px}
     .table-card{overflow:hidden}.table-head{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}.table-head h2{font-size:15px;margin:0}.table-head small{color:var(--muted)}
     .scroll{overflow:auto;max-height:68vh}.calendar{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;font-size:11px}.calendar th,.calendar td{border-right:1px solid var(--border);border-bottom:1px solid var(--border);height:34px;padding:3px;text-align:center;background:white}.calendar thead th{position:sticky;top:0;z-index:10;background:#f0f7f5;font-weight:850}.calendar .item-col{position:sticky;left:0;z-index:12;text-align:left;min-width:230px;max-width:230px;padding-left:9px}.calendar thead .item-col{z-index:20}.calendar .unit-col{position:sticky;left:230px;z-index:12;min-width:65px;background:white}.calendar thead .unit-col{z-index:20;background:#f0f7f5}.calendar .price-col{position:sticky;left:295px;z-index:12;min-width:78px;background:white;font-weight:700}.calendar thead .price-col{z-index:20;background:#f0f7f5}.calendar .total-col{position:sticky;right:0;z-index:12;min-width:90px;background:#f8fbfa;font-weight:800}.calendar thead .total-col{z-index:20;background:#dff0eb}.qty{width:38px;height:26px;border:1px solid transparent;background:transparent;text-align:center;border-radius:5px;padding:2px}.qty:hover{border-color:#ccd9d5;background:#fff}.qty:focus{border-color:var(--green);outline:none;background:#fff;box-shadow:0 0 0 2px rgba(23,107,91,.1)}.qty.nonzero{background:#eaf6f3;color:var(--green2);font-weight:800}.section-row td{background:#edf3f1!important;font-weight:850;text-align:left!important;padding-left:10px!important;height:30px}.section-row .item-col{background:#edf3f1!important}
-    .tabs{display:flex;gap:8px;margin:0 0 12px}.tab{background:white;border:1px solid var(--border);color:var(--text)}.tab.active{background:var(--green);color:#fff;border-color:var(--green)}
+    .tabs{display:flex;gap:8px;margin:0 0 12px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}.tab{background:white;border:1px solid var(--border);color:var(--text);flex-shrink:0;white-space:nowrap}.tab.active{background:var(--green);color:#fff;border-color:var(--green)}
     .panel{padding:16px}.panel h3{margin:0 0 12px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.list{border:1px solid var(--border);border-radius:10px;overflow:hidden}.row{display:grid;grid-template-columns:1fr auto auto;gap:10px;padding:10px;border-bottom:1px solid var(--border);align-items:center}.row:last-child{border:0}.row small{color:var(--muted)}
     .badge{display:inline-block;padding:3px 7px;border-radius:999px;background:var(--mint);color:var(--green2);font-size:10px;font-weight:800}.toast{position:fixed;right:18px;bottom:18px;z-index:60;background:#20302c;color:#fff;padding:11px 14px;border-radius:9px;box-shadow:var(--shadow);font-size:12px}.note{font-size:12px;color:var(--muted);line-height:1.5}
-    @media(max-width:850px){.toolbar{grid-template-columns:1fr 1fr}.summary{grid-template-columns:1fr 1fr}.topbar{flex-wrap:wrap}.calendar .item-col{min-width:175px;max-width:175px}.calendar .unit-col{left:175px}.calendar .price-col{left:240px}.grid2{grid-template-columns:1fr}}
+    @media(max-width:850px){.toolbar{grid-template-columns:1fr 1fr}.toolbar .btn{width:100%}.summary{grid-template-columns:1fr 1fr}.topbar{flex-wrap:wrap}.calendar .item-col{min-width:175px;max-width:175px}.calendar .unit-col{left:175px}.calendar .price-col{left:240px}.grid2{grid-template-columns:1fr}}
+    @media(max-width:480px){
+      .wrap{padding:0 10px;margin:12px auto}
+      .login{margin:6vh auto;padding:20px;max-width:100%}
+      .toolbar{grid-template-columns:1fr;padding:12px}
+      .summary{grid-template-columns:1fr 1fr;gap:8px}
+      .kpi{padding:10px}.kpi strong{font-size:16px}
+      .table-head{flex-wrap:wrap}
+      .calendar .item-col{min-width:130px;max-width:130px}
+      .calendar .unit-col{left:130px;min-width:48px}
+      .calendar .price-col{left:178px;min-width:62px}
+      .qty{width:34px;height:34px;font-size:14px}
+      .row{grid-template-columns:1fr;text-align:left}
+      .btn{padding:11px 13px}
+    }
     #auditTable {
   width: 100%;
   border-collapse: collapse;
@@ -3104,6 +3126,12 @@ ${esc(
 $('loadAuditBtn').onclick = loadAuditHistory;
 
 init();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW registration failed:', err));
+  });
+}
 </script>
 </body>
 </html>
