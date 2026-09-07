@@ -19,10 +19,16 @@
     *{box-sizing:border-box} html{overflow-x:hidden} body{margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--text);overflow-x:hidden;width:100%}
     button,input,select{font:inherit} .hidden{display:none!important}
     .topbar{position:sticky;top:0;z-index:30;background:var(--green2);color:#fff;padding:12px 18px;display:flex;align-items:center;gap:12px;box-shadow:0 2px 12px rgba(0,0,0,.12)}
+    .topbar-logo-wrap{background:#fff;border-radius:9px;padding:5px 7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 1px 3px rgba(0,0,0,.18)}
+    .topbar-logo{height:24px;width:auto;display:block}
     .brand{font-weight:850}.brand small{display:block;font-weight:500;opacity:.8;font-size:11px}.spacer{flex:1}.user-chip{font-size:12px;opacity:.9}.btn{border:0;border-radius:9px;padding:10px 13px;font-weight:750;cursor:pointer}.btn-primary{background:var(--green);color:white}.btn-light{background:white;color:var(--green2)}.btn-ghost{background:transparent;color:inherit;border:1px solid currentColor}.btn-danger{background:#fff0ef;color:var(--red);border:1px solid #efc8c4}
     .wrap{max-width:1550px;margin:18px auto;padding:0 16px}.card{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow)}
     .login{max-width:420px;margin:10vh auto;padding:26px}.login h1{margin:0 0 5px}.sub{color:var(--muted);font-size:13px;margin-bottom:20px}.field{margin-bottom:14px}.field label{display:block;font-size:12px;font-weight:800;margin-bottom:6px}.field input,.field select,.toolbar select,.toolbar input{width:100%;border:1px solid #c9d5d1;border-radius:9px;padding:10px 11px;background:white;outline:none}.field input:focus,.field select:focus,.toolbar select:focus,.toolbar input:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(23,107,91,.1)}
-    .toolbar{padding:14px;display:grid;grid-template-columns:minmax(200px,1.4fr) 150px auto auto auto;gap:10px;align-items:end;margin-bottom:12px}.toolbar .tfield label{display:block;font-size:11px;font-weight:800;color:var(--muted);margin-bottom:5px}
+    .toolbar{padding:14px;display:grid;grid-template-columns:minmax(200px,260px) 190px auto auto auto auto;gap:10px;align-items:end;margin-bottom:12px}.toolbar .tfield label{display:block;font-size:11px;font-weight:800;color:var(--muted);margin-bottom:5px}
+    .toolbar-actions{padding:12px 14px;margin-bottom:12px;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+    .action-group{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+    .action-group+.action-group{padding-left:14px;border-left:1px solid var(--border)}
+    .action-label{font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-right:2px}
     .status{font-size:12px;color:var(--muted);padding:0 4px 10px}.status.ok{color:var(--green)}.status.err{color:var(--red)}
     .summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}.kpi{padding:14px}.kpi span{display:block;font-size:11px;color:var(--muted);font-weight:800}.kpi strong{display:block;font-size:20px;margin-top:3px}
     .table-card{overflow:hidden}.table-head{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}.table-head h2{font-size:15px;margin:0}.table-head small{color:var(--muted)}
@@ -30,7 +36,7 @@
     .tabs{display:flex;gap:8px;margin:0 0 12px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}.tab{background:white;border:1px solid var(--border);color:var(--text);flex-shrink:0;white-space:nowrap}.tab.active{background:var(--green);color:#fff;border-color:var(--green)}
     .panel{padding:16px}.panel h3{margin:0 0 12px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.list{border:1px solid var(--border);border-radius:10px;overflow:hidden}.row{display:grid;grid-template-columns:1fr auto auto;gap:10px;padding:10px;border-bottom:1px solid var(--border);align-items:center}.row:last-child{border:0}.row small{color:var(--muted)}
     .badge{display:inline-block;padding:3px 7px;border-radius:999px;background:var(--mint);color:var(--green2);font-size:10px;font-weight:800}.toast{position:fixed;right:18px;bottom:18px;z-index:60;background:#20302c;color:#fff;padding:11px 14px;border-radius:9px;box-shadow:var(--shadow);font-size:12px}.note{font-size:12px;color:var(--muted);line-height:1.5}
-    @media(max-width:850px){.toolbar{grid-template-columns:1fr 1fr}.toolbar .btn{width:100%}.summary{grid-template-columns:1fr 1fr}.topbar{flex-wrap:wrap}.calendar .item-col{min-width:175px;max-width:175px}.calendar .unit-col{left:175px}.calendar .price-col{left:240px}.grid2{grid-template-columns:1fr}}
+    @media(max-width:850px){.toolbar{grid-template-columns:1fr 1fr}.toolbar .btn{width:100%}.summary{grid-template-columns:1fr 1fr}.topbar{flex-wrap:wrap}.calendar .item-col{min-width:175px;max-width:175px}.calendar .unit-col{left:175px}.calendar .price-col{left:240px}.grid2{grid-template-columns:1fr}.action-group{flex:1 1 100%}.action-group+.action-group{padding-left:0;border-left:0;padding-top:10px;border-top:1px solid var(--border)}.action-group .btn{flex:1 1 auto}}
     @media(max-width:480px){
       .wrap{padding:0 10px;margin:12px auto}
       .login{margin:6vh auto;padding:20px;max-width:100%}
@@ -44,6 +50,9 @@
       .qty{width:34px;height:34px;font-size:14px}
       .row{grid-template-columns:1fr;text-align:left}
       .btn{padding:11px 13px}
+      .toolbar-actions{padding:10px}
+      .action-group{gap:8px}
+      .action-group .btn{flex:1 1 calc(50% - 4px)}
     }
     #auditTable {
   width: 100%;
@@ -100,8 +109,9 @@
 <body>
   <section id="loginView" class="wrap">
     <div class="card login">
-      <h1>MG Bayan Lepas</h1>
-      <div class="sub">Relau Branch of Mintygreen · Monthly Charges</div>
+      <img src="logo.png" alt="MG Bayan Lepas logo" style="height:56px;width:auto;display:block;margin:0 auto 14px">
+      <h1 style="text-align:center">MG Bayan Lepas</h1>
+      <div class="sub" style="text-align:center">Relau Branch of Mintygreen · Monthly Charges</div>
       <div class="field"><label>Email</label><input id="email" type="email" autocomplete="email" placeholder="staff@company.com"></div>
       <div class="field"><label>Password</label><input id="password" type="password" autocomplete="current-password" placeholder="••••••••"></div>
       <div id="passwordSetupBox" style="display:none; margin-top:14px;">
@@ -126,6 +136,7 @@
 
   <div id="appView" class="hidden">
     <header class="topbar">
+      <span class="topbar-logo-wrap"><img src="logo.png" alt="MG Bayan Lepas logo" class="topbar-logo"></span>
       <div class="brand">MG Bayan Lepas<small>Relau Branch · Mintygreen</small></div>
 <div class="spacer"></div><span id="userEmail" class="user-chip"></span><span id="userRole" class="badge"></span>
       <button id="logoutBtn" class="btn btn-light">Log out</button>
@@ -144,6 +155,10 @@
   </button>
   <button class="btn tab admin-only" data-tab="audit">
   Audit History
+</button>
+
+<button class="btn tab admin-only" data-tab="backups">
+  Backups
 </button>
 
 </div>
@@ -174,6 +189,14 @@
 </div>
 
 <button
+  id="backupDataBtn"
+  class="btn btn-light admin-only"
+  style="border:1px solid var(--border)"
+>
+  Backup Data
+</button>
+
+<button
   id="cycleLockBtn"
   class="btn btn-light admin-only"
   style="border:1px solid var(--border)"
@@ -182,12 +205,20 @@
 </button>
 
 <button id="reloadBtn" class="btn btn-primary">Load</button>
-          <button id="exportBtn" class="btn btn-light" style="border:1px solid var(--border)">Export Excel</button>
-          <button id="exportPdfBtn" class="btn btn-light" style="border:1px solid var(--border)">Export PDF</button>
-          <button id="exportFinancePdfBtn" class="btn btn-light" style="border:1px solid var(--border)">Finance PDF</button>
-          <button id="printBtn" class="btn btn-light" style="border:1px solid var(--border)">Print / PDF</button>
-          <button id="exportAllPdfBtn" class="btn btn-light admin-only" style="border:1px solid var(--border)">Export PDF (All Residents)</button>
-          <button id="exportAllFinancePdfBtn" class="btn btn-light admin-only" style="border:1px solid var(--border)">Finance PDF (All Residents)</button>
+        </div>
+        <div class="card toolbar-actions">
+          <div class="action-group">
+            <span class="action-label">Export</span>
+            <button id="exportBtn" class="btn btn-light" style="border:1px solid var(--border)">Export Excel</button>
+            <button id="exportPdfBtn" class="btn btn-light" style="border:1px solid var(--border)">Export PDF</button>
+            <button id="exportFinancePdfBtn" class="btn btn-light" style="border:1px solid var(--border)">Finance PDF</button>
+            <button id="printBtn" class="btn btn-light" style="border:1px solid var(--border)">Print / PDF</button>
+          </div>
+          <div class="action-group admin-only" id="bulkActionsGroup">
+            <span class="action-label">Bulk (Admin)</span>
+            <button id="exportAllPdfBtn" class="btn btn-light" style="border:1px solid var(--border)">Export PDF (All Residents)</button>
+            <button id="exportAllFinancePdfBtn" class="btn btn-light" style="border:1px solid var(--border)">Finance PDF (All Residents)</button>
+          </div>
         </div>
         <div id="saveStatus" class="status">Select a resident to begin.</div>
         <div class="summary">
@@ -304,6 +335,38 @@
 
       </table>
 
+    </div>
+
+  </div>
+
+</section>
+
+<section id="backupsTab" class="hidden">
+
+  <div class="card panel">
+
+    <h3>Backups</h3>
+
+    <p class="note">
+      Take a snapshot of all current charges (usage entries, monthly packages,
+      one-off price overrides and price history) so you can undo a mistake
+      later. Restoring a backup automatically saves a fresh safety snapshot
+      of what was on the system right before the restore, so a restore can
+      always itself be undone.
+    </p>
+
+    <div class="grid2" style="align-items:end;margin-bottom:16px">
+      <div class="field" style="margin-bottom:0">
+        <label>Label (optional)</label>
+        <input id="newBackupLabel" placeholder="e.g. Before September closing">
+      </div>
+      <button id="createBackupBtn" class="btn btn-primary">Create Backup Now</button>
+    </div>
+
+    <div id="backupStatus" class="status"></div>
+
+    <div id="backupsList" class="list" style="margin-top:10px">
+      <div class="row"><small>Loading backups…</small></div>
     </div>
 
   </div>
@@ -2970,6 +3033,189 @@ async function exportAllResidents(mode) {
 
 $('exportAllPdfBtn').onclick = () => exportAllResidents('calendar');
 $('exportAllFinancePdfBtn').onclick = () => exportAllResidents('finance');
+
+// ==========================================
+// BACKUP & RESTORE — LIVE DATABASE SNAPSHOTS
+// ==========================================
+// Snapshots (and restores) charge_entries, recurring_charges,
+// recurring_charge_overrides and recurring_charge_price_history
+// directly in Supabase, via the create_data_backup /
+// restore_data_backup functions (see backup_restore_setup.sql —
+// run once in the Supabase SQL editor). This is for undoing
+// accidental changes to charges — it's not a downloadable file.
+
+async function createBackup(label, { silent } = {}) {
+
+  if (!silent) {
+    toast('Creating backup…');
+  }
+
+  const { data, error } = await sb.rpc('create_data_backup', {
+    backup_label: label || null
+  });
+
+  if (error) {
+    console.error('Backup failed:', error);
+    toast(error.message || 'Backup failed');
+    return null;
+  }
+
+  if (!silent) {
+    toast('Backup created');
+  }
+
+  return data; // new backup id
+}
+
+let backupsById = {};
+
+async function loadBackupsList() {
+
+  const list = $('backupsList');
+
+  if (!list) return;
+
+  list.innerHTML = '<div class="row"><small>Loading backups…</small></div>';
+
+  const { data: backups, error } = await sb
+    .from('data_backups')
+    .select('id,label,created_at,created_by')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Could not load backups:', error);
+    list.innerHTML = `<div class="row"><small>Could not load backups: ${esc(error.message)}</small></div>`;
+    return;
+  }
+
+  if (!backups || !backups.length) {
+    list.innerHTML = '<div class="row"><small>No backups yet. Click "Create Backup Now" to make one.</small></div>';
+    return;
+  }
+
+  const userIds = [...new Set(backups.map(b => b.created_by).filter(Boolean))];
+  const emailById = {};
+
+  if (userIds.length) {
+
+    const { data: profileData, error: profileError } = await sb
+      .from('profiles')
+      .select('id,email')
+      .in('id', userIds);
+
+    if (profileError) {
+      console.error('Could not load staff emails:', profileError);
+    } else {
+      (profileData || []).forEach(p => { emailById[p.id] = p.email || p.id; });
+    }
+  }
+
+  list.innerHTML = backups.map(b => {
+
+    backupsById[b.id] = b;
+
+    const when = new Date(b.created_at).toLocaleString('en-MY', {
+      day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
+
+    const who = emailById[b.created_by] || '-';
+
+    return `
+      <div class="row">
+        <div>
+          <strong>${esc(b.label)}</strong>
+          <br>
+          <small>${esc(when)} · by ${esc(who)}</small>
+        </div>
+        <button class="btn btn-light" style="border:1px solid var(--border)" onclick="window.restoreBackupFlow('${b.id}')">Restore</button>
+      </div>
+    `;
+  }).join('');
+}
+
+window.restoreBackupFlow = async function(backupId) {
+
+  const backupLabel = backupsById[backupId]?.label || 'this backup';
+
+  const confirmed = confirm(
+    `Restore "${backupLabel}"?\n\n` +
+    `This will REPLACE all current charge entries, monthly packages, ` +
+    `overrides and price history with what they were at that backup. ` +
+    `A safety backup of the CURRENT data will be created automatically ` +
+    `first, so this can itself be undone.\n\nContinue?`
+  );
+
+  if (!confirmed) return;
+
+  setStatus('Restoring backup…');
+  toast('Restoring backup — please wait…');
+
+  const { error } = await sb.rpc('restore_data_backup', {
+    target_backup_id: backupId
+  });
+
+  if (error) {
+    console.error('Restore failed:', error);
+    toast(error.message || 'Restore failed');
+    setStatus('Restore failed', 'err');
+    return;
+  }
+
+  toast('Backup restored');
+  setStatus('Backup restored. Reloading data…', 'ok');
+
+  // Refresh whatever is currently on screen so it reflects the restore
+  await loadRecurringPricingData();
+
+  if ($('residentSelect').value && $('monthPicker').value) {
+    await loadMonth();
+  }
+
+  if ($('recurringTab') && !$('recurringTab').classList.contains('hidden')) {
+    await loadRecurring();
+  }
+
+  await loadBackupsList();
+};
+
+$('createBackupBtn').onclick = async () => {
+
+  const btn = $('createBackupBtn');
+  const label = $('newBackupLabel').value.trim();
+  const originalLabel = btn.textContent;
+
+  btn.disabled = true;
+  btn.textContent = 'Creating…';
+
+  const id = await createBackup(label);
+
+  btn.disabled = false;
+  btn.textContent = originalLabel;
+
+  if (id) {
+    $('newBackupLabel').value = '';
+    await loadBackupsList();
+  }
+};
+
+$('backupDataBtn').onclick = async () => {
+
+  const btn = $('backupDataBtn');
+  const originalLabel = btn.textContent;
+
+  btn.disabled = true;
+  btn.textContent = 'Backing up…';
+
+  await createBackup(null);
+
+  btn.disabled = false;
+  btn.textContent = originalLabel;
+
+  if ($('backupsTab') && !$('backupsTab').classList.contains('hidden')) {
+    await loadBackupsList();
+  }
+};
+
 document
   .querySelectorAll('.tab')
   .forEach(b => {
@@ -2985,7 +3231,8 @@ document
         (
           requestedTab === 'recurring' ||
           requestedTab === 'setup' ||
-          requestedTab === 'audit'
+          requestedTab === 'audit' ||
+          requestedTab === 'backups'
         )
       ) {
 
@@ -3008,7 +3255,8 @@ document
         'charges',
         'recurring',
         'setup',
-        'audit'
+        'audit',
+        'backups'
       ].forEach(t => {
 
         const section =
@@ -3045,6 +3293,13 @@ document
         }
 
         loadAuditHistory();
+      }
+
+      // Backups behavior
+      if (
+        requestedTab === 'backups'
+      ) {
+        loadBackupsList();
       }
 
     };
