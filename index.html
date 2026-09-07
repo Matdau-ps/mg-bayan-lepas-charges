@@ -186,6 +186,8 @@
           <button id="exportPdfBtn" class="btn btn-light" style="border:1px solid var(--border)">Export PDF</button>
           <button id="exportFinancePdfBtn" class="btn btn-light" style="border:1px solid var(--border)">Finance PDF</button>
           <button id="printBtn" class="btn btn-light" style="border:1px solid var(--border)">Print / PDF</button>
+          <button id="exportAllPdfBtn" class="btn btn-light admin-only" style="border:1px solid var(--border)">Export PDF (All Residents)</button>
+          <button id="exportAllFinancePdfBtn" class="btn btn-light admin-only" style="border:1px solid var(--border)">Finance PDF (All Residents)</button>
         </div>
         <div id="saveStatus" class="status">Select a resident to begin.</div>
         <div class="summary">
@@ -2484,6 +2486,490 @@ for (const r of recurring) {
   );
 };
 $('printBtn').onclick=()=>{if(!$('residentSelect').value)return toast('Select a resident first');window.print()};
+
+// ==========================================
+// BULK EXPORT — ALL RESIDENTS IN ONE PDF
+// ==========================================
+// These reuse the same layout as the single-resident
+// "Export PDF" / "Finance PDF" buttons above, but loop
+// through every active resident and place each one on
+// their own page(s) inside a single combined PDF file.
+
+async function fetchResidentMonthData(residentId, cycle) {
+  const [e, r] = await Promise.all([
+    sb
+      .from('charge_entries')
+      .select('*')
+      .eq('resident_id', residentId)
+      .gte('charge_date', cycle.start)
+      .lte('charge_date', cycle.end),
+
+    sb
+      .from('recurring_charges')
+      .select('*, items(name,unit)')
+      .eq('resident_id', residentId)
+      .lte('start_date', cycle.end)
+      .or(`end_date.is.null,end_date.gte.${cycle.start}`)
+  ]);
+
+  if (e.error || r.error) {
+    throw (e.error || r.error);
+  }
+
+  return {
+    entriesForResident: e.data || [],
+    recurringForResident: r.data || []
+  };
+}
+
+// Calendar-style page for one resident (mirrors exportPdfBtn above)
+function renderCalendarPdfPage(doc, resident, month, cycle, billingDates, periodText, entriesForResident, recurringForResident) {
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.text('MG Bayan Lepas', 10, 10);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.text('Relau Branch of Mintygreen', 10, 15);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text('Monthly Charges', pageWidth - 10, 10, { align: 'right' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.text(`Resident: ${resident.name}`, 10, 22);
+  doc.text(`Room / Ref: ${resident.room_ref || '-'}`, 10, 27);
+  doc.text(`Billing Cycle: ${month}`, 90, 22);
+  doc.text(`Period: ${periodText}`, 90, 27);
+
+  const headRow = [
+    'Item', 'Unit', 'Price',
+    ...billingDates.map(d => String(d.day)),
+    'Total'
+  ];
+
+  const bodyRows = [];
+
+  for (const [cat, list] of groupItems()) {
+
+    bodyRows.push([{
+      content: cat,
+      colSpan: billingDates.length + 4,
+      styles: { fontStyle: 'bold', fillColor: [235, 243, 241] }
+    }]);
+
+    for (const it of list) {
+
+      let rowTotal = 0;
+
+      const row = [
+        it.name,
+        it.unit || '',
+        it.price == null ? '' : Number(it.price).toFixed(2)
+      ];
+
+      for (const d of billingDates) {
+
+        const e = entriesForResident.find(
+          x => x.item_id === it.id && x.charge_date === d.date
+        );
+
+        const qty = e ? Number(e.quantity) : 0;
+
+        row.push(qty ? String(qty) : '');
+
+        rowTotal += qty * Number(e?.unit_price ?? it.price ?? 0);
+      }
+
+      row.push(rowTotal ? rowTotal.toFixed(2) : '');
+
+      bodyRows.push(row);
+    }
+  }
+
+  if (recurringForResident.length) {
+
+    bodyRows.push([{
+      content: 'MONTHLY / RECURRING CHARGES',
+      colSpan: billingDates.length + 4,
+      styles: { fontStyle: 'bold', fillColor: [225, 238, 235] }
+    }]);
+
+    for (const r of recurringForResident) {
+
+      const recurringAmount = getRecurringAmountForMonth(r, month);
+
+      bodyRows.push([
+        r.items?.name || 'Recurring charge',
+        r.items?.unit || 'monthly',
+        Number(recurringAmount).toFixed(2),
+        ...Array(billingDates.length).fill(''),
+        Number(recurringAmount).toFixed(2)
+      ]);
+    }
+  }
+
+  const usageTotal = entriesForResident.reduce(
+    (sum, e) => sum + Number(e.quantity) * Number(e.unit_price), 0
+  );
+
+  const recurringTotal = recurringForResident.reduce(
+    (sum, r) => sum + Number(getRecurringAmountForMonth(r, month)), 0
+  );
+
+  const grandTotal = usageTotal + recurringTotal;
+
+  doc.autoTable({
+    startY: 32,
+    head: [headRow],
+    body: bodyRows,
+    theme: 'grid',
+    styles: {
+      font: 'helvetica',
+      fontSize: 5,
+      cellPadding: 0.8,
+      halign: 'center',
+      valign: 'middle',
+      lineWidth: 0.1,
+      overflow: 'linebreak'
+    },
+    headStyles: {
+      fillColor: [46, 106, 91],
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 5
+    },
+    columnStyles: {
+      0: { cellWidth: 31, halign: 'left' },
+      1: { cellWidth: 10 },
+      2: { cellWidth: 11 },
+      [billingDates.length + 3]: { cellWidth: 14 }
+    },
+    didParseCell: function(data) {
+      if (data.section === 'body' && data.column.index === 0) {
+        data.cell.styles.halign = 'left';
+      }
+    },
+    margin: { left: 6, right: 6 }
+  });
+
+  let finalY = doc.lastAutoTable.finalY + 6;
+
+  if (finalY > 190) {
+    doc.addPage();
+    finalY = 15;
+  }
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text(`Grand Total: RM ${grandTotal.toFixed(2)}`, pageWidth - 10, finalY, { align: 'right' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.text(`Usage Charges: RM ${usageTotal.toFixed(2)}`, pageWidth - 10, finalY + 5, { align: 'right' });
+  doc.text(`Recurring Charges: RM ${recurringTotal.toFixed(2)}`, pageWidth - 10, finalY + 10, { align: 'right' });
+}
+
+// Finance-style page for one resident (mirrors exportFinancePdfBtn above)
+function renderFinancePdfPage(doc, resident, month, cycle, periodText, entriesForResident, recurringForResident) {
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text('MG Bayan Lepas', 14, 15);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text('Relau Branch of Mintygreen', 14, 21);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.text('Monthly Charges Summary', pageWidth - 14, 15, { align: 'right' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text(`Resident: ${resident.name}`, 14, 32);
+  doc.text(`Room / Ref: ${resident.room_ref || '-'}`, 14, 38);
+  doc.text(`Billing Cycle: ${month}`, 110, 32);
+  doc.text(`Period: ${periodText}`, 110, 38);
+
+  const usageRows = [];
+  let usageTotal = 0;
+
+  for (const e of entriesForResident) {
+
+    const item = items.find(i => i.id === e.item_id);
+
+    if (!item) continue;
+
+    const qty = Number(e.quantity) || 0;
+
+    if (qty <= 0) continue;
+
+    const unitPrice = Number(e.unit_price) || 0;
+    const amount = qty * unitPrice;
+
+    usageTotal += amount;
+
+    const chargeDate = new Date(e.charge_date + 'T00:00:00');
+
+    const displayDate = new Intl.DateTimeFormat('en-MY', {
+      day: '2-digit', month: 'short', year: 'numeric'
+    }).format(chargeDate);
+
+    usageRows.push([
+      item.name,
+      displayDate,
+      qty,
+      `RM ${unitPrice.toFixed(2)}`,
+      `RM ${amount.toFixed(2)}`
+    ]);
+  }
+
+  usageRows.sort((a, b) => new Date(a[1]) - new Date(b[1]));
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text('Usage Charges', 14, 50);
+
+  if (usageRows.length > 0) {
+
+    doc.autoTable({
+      startY: 54,
+      head: [['Item', 'Date', 'Qty', 'Unit Price', 'Amount']],
+      body: usageRows,
+      theme: 'grid',
+      styles: { font: 'helvetica', fontSize: 8, cellPadding: 2, valign: 'middle' },
+      headStyles: { fillColor: [46, 106, 91], textColor: [255, 255, 255], fontStyle: 'bold' },
+      columnStyles: {
+        0: { cellWidth: 70 },
+        1: { cellWidth: 30, halign: 'center' },
+        2: { cellWidth: 15, halign: 'center' },
+        3: { cellWidth: 28, halign: 'right' },
+        4: { cellWidth: 30, halign: 'right' }
+      },
+      margin: { left: 14, right: 14 }
+    });
+
+  } else {
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.text('No usage charges recorded for this billing cycle.', 14, 58);
+  }
+
+  let nextY;
+
+  if (usageRows.length > 0 && doc.lastAutoTable) {
+    nextY = doc.lastAutoTable.finalY + 10;
+  } else {
+    nextY = 68;
+  }
+
+  const recurringRows = [];
+  let recurringTotal = 0;
+
+  for (const r of recurringForResident) {
+
+    const amount = Number(getRecurringAmountForMonth(r, month)) || 0;
+
+    recurringTotal += amount;
+
+    recurringRows.push([
+      r.items?.name || 'Recurring charge',
+      r.items?.unit || 'Monthly',
+      `RM ${amount.toFixed(2)}`
+    ]);
+  }
+
+  if (nextY > 230) {
+    doc.addPage();
+    nextY = 20;
+  }
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text('Monthly / Recurring Charges', 14, nextY);
+
+  if (recurringRows.length > 0) {
+
+    doc.autoTable({
+      startY: nextY + 4,
+      head: [['Description', 'Type', 'Amount']],
+      body: recurringRows,
+      theme: 'grid',
+      styles: { font: 'helvetica', fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [46, 106, 91], textColor: [255, 255, 255], fontStyle: 'bold' },
+      columnStyles: {
+        0: { cellWidth: 105 },
+        1: { cellWidth: 35 },
+        2: { cellWidth: 35, halign: 'right' }
+      },
+      margin: { left: 14, right: 14 }
+    });
+
+    nextY = doc.lastAutoTable.finalY + 10;
+
+  } else {
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.text('No recurring charges for this billing cycle.', 14, nextY + 6);
+
+    nextY += 18;
+  }
+
+  const grandTotal = usageTotal + recurringTotal;
+
+  if (nextY > 245) {
+    doc.addPage();
+    nextY = 25;
+  }
+
+  doc.setDrawColor(180);
+  doc.line(110, nextY, pageWidth - 14, nextY);
+
+  nextY += 7;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text('Usage Charges:', 115, nextY);
+  doc.text(`RM ${usageTotal.toFixed(2)}`, pageWidth - 14, nextY, { align: 'right' });
+
+  nextY += 6;
+
+  doc.text('Recurring Charges:', 115, nextY);
+  doc.text(`RM ${recurringTotal.toFixed(2)}`, pageWidth - 14, nextY, { align: 'right' });
+
+  nextY += 8;
+
+  doc.setDrawColor(100);
+  doc.line(110, nextY - 3, pageWidth - 14, nextY - 3);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.text('GRAND TOTAL:', 115, nextY + 3);
+  doc.text(`RM ${grandTotal.toFixed(2)}`, pageWidth - 14, nextY + 3, { align: 'right' });
+}
+
+async function exportAllResidents(mode) {
+
+  const month = $('monthPicker').value;
+
+  if (!month) {
+    return toast('Select a billing cycle first');
+  }
+
+  if (!residents.length) {
+    return toast('No active residents found');
+  }
+
+  const cycle = getBillingCycle(month);
+
+  if (!cycle) {
+    return toast('Invalid billing cycle');
+  }
+
+  const btn = mode === 'calendar' ? $('exportAllPdfBtn') : $('exportAllFinancePdfBtn');
+  const originalLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Generating…';
+  toast(`Generating PDF for ${residents.length} resident(s)…`);
+
+  try {
+
+    // Make sure permanent price changes / one-off overrides
+    // for recurring charges are up to date before totalling.
+    await loadRecurringPricingData();
+
+    const { jsPDF } = window.jspdf;
+    const billingDates = getBillingDates(month);
+    const periodText = `${formatShortDate(cycle.startDate)} - ${formatShortDate(cycle.endDate)}`;
+
+    const doc = new jsPDF({
+      orientation: mode === 'calendar' ? 'landscape' : 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    let firstPage = true;
+    let skipped = 0;
+
+    for (const resident of residents) {
+
+      let data;
+
+      try {
+        data = await fetchResidentMonthData(resident.id, cycle);
+      } catch (err) {
+        console.error(`Could not load data for ${resident.name}:`, err);
+        skipped++;
+        continue;
+      }
+
+      if (!firstPage) {
+        doc.addPage();
+      }
+      firstPage = false;
+
+      if (mode === 'calendar') {
+        renderCalendarPdfPage(doc, resident, month, cycle, billingDates, periodText, data.entriesForResident, data.recurringForResident);
+      } else {
+        renderFinancePdfPage(doc, resident, month, cycle, periodText, data.entriesForResident, data.recurringForResident);
+      }
+    }
+
+    // Footer / page numbers across the whole combined document
+    const pages = doc.internal.getNumberOfPages();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const footerLabel = mode === 'calendar' ? 'MG Bayan Lepas - Monthly Charges' : 'MG Bayan Lepas - Monthly Charges Summary';
+
+    for (let i = 1; i <= pages; i++) {
+      doc.setPage(i);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(mode === 'calendar' ? 6 : 7);
+      doc.setTextColor(100);
+
+      if (mode === 'calendar') {
+        doc.text(footerLabel, 8, 205);
+        doc.text(`Page ${i} of ${pages}`, pageWidth - 8, 205, { align: 'right' });
+      } else {
+        doc.text(footerLabel, 14, pageHeight - 10);
+        doc.text(`Page ${i} of ${pages}`, pageWidth - 14, pageHeight - 10, { align: 'right' });
+      }
+    }
+
+    const safeMonth = month.replace(/[^a-z0-9]/gi, '_');
+
+    doc.save(
+      mode === 'calendar'
+        ? `All_Residents_${safeMonth}_charges.pdf`
+        : `All_Residents_${safeMonth}_Finance_Summary.pdf`
+    );
+
+    toast(
+      skipped
+        ? `Done, but skipped ${skipped} resident(s) due to errors (see console)`
+        : 'PDF generated for all residents'
+    );
+
+  } catch (err) {
+    console.error('Bulk export failed:', err);
+    toast(err.message || 'Bulk export failed');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+  }
+}
+
+$('exportAllPdfBtn').onclick = () => exportAllResidents('calendar');
+$('exportAllFinancePdfBtn').onclick = () => exportAllResidents('finance');
 document
   .querySelectorAll('.tab')
   .forEach(b => {
