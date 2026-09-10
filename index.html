@@ -267,6 +267,16 @@
 
       <section id="setupTab" class="hidden">
         <div class="grid2">
+          <div class="card panel admin-only" id="staffPanel">
+            <h3>Staff</h3>
+            <p class="note">Add a login for someone on your team. They'll use the email/password you set here to sign in.</p>
+            <div class="field"><label>Full Name</label><input id="newStaffName" placeholder="e.g. Aina binti Kassim"></div>
+            <div class="field"><label>Email</label><input id="newStaffEmail" type="email" placeholder="staff@example.com"></div>
+            <div class="field"><label>Temporary Password</label><input id="newStaffPassword" type="text" placeholder="Set a temporary password"></div>
+            <div class="field superadmin-only hidden" id="staffBranchField"><label>Branch</label><select id="newStaffBranch"></select></div>
+            <div class="field superadmin-only hidden" id="staffRoleField"><label>Role</label><select id="newStaffRole"><option value="staff">Staff</option><option value="admin">Branch Admin</option></select></div>
+            <button id="addStaffBtn" class="btn btn-primary">Add Staff</button>
+          </div>
           <div class="card panel superadmin-only hidden" id="branchPanel">
             <h3>Branches</h3>
             <p class="note">Only you (super admin) can see this. Each branch's residents, items, and charges are kept completely separate.</p>
@@ -3438,6 +3448,11 @@ function renderBranchList() {
     copyFrom.innerHTML = '<option value="">Start empty</option>' +
       branches.map(b => `<option value="${b.id}">Copy items from ${esc(b.name)}</option>`).join('');
   }
+  const staffBranch = $('newStaffBranch');
+  if (staffBranch) {
+    staffBranch.innerHTML = branches.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
+    if (currentBranchId) staffBranch.value = currentBranchId;
+  }
 }
 window.editBranch = async id => {
   const branch = branches.find(b => b.id === id);
@@ -3548,6 +3563,32 @@ if ($('addBranchBtn')) $('addBranchBtn').onclick = async () => {
   $('newBranchName').value = '';
   await loadBranchContext();
   renderBranchList();
+};
+if ($('addStaffBtn')) $('addStaffBtn').onclick = async () => {
+  const full_name = $('newStaffName').value.trim();
+  const email = $('newStaffEmail').value.trim();
+  const password = $('newStaffPassword').value;
+  if (!full_name) return toast('Enter their full name');
+  if (!email) return toast('Enter an email');
+  if (!password || password.length < 6) return toast('Password must be at least 6 characters');
+
+  const body = { email, password, full_name };
+  if (currentUserRole === 'super_admin') {
+    const branchId = $('newStaffBranch')?.value;
+    if (!branchId) return toast('Select a branch');
+    body.branch_id = branchId;
+    body.role = $('newStaffRole')?.value || 'staff';
+  }
+
+  toast('Creating staff account…');
+  const { data, error } = await sb.functions.invoke('create-staff-user', { body });
+  if (error) return toast(error.message || 'Could not create staff account');
+  if (data?.error) return toast(data.error);
+
+  $('newStaffName').value = '';
+  $('newStaffEmail').value = '';
+  $('newStaffPassword').value = '';
+  toast(`Staff account created for ${email}`);
 };
 function applyRoleAccess() {
 
