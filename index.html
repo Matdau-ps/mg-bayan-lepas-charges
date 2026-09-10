@@ -167,6 +167,9 @@
   <button class="btn tab admin-only" data-tab="staff">
     Staff
   </button>
+  <button class="btn tab superadmin-only hidden" data-tab="branches">
+    Branches
+  </button>
   <button class="btn tab admin-only" data-tab="audit">
   Audit History
 </button>
@@ -270,14 +273,6 @@
 
       <section id="setupTab" class="hidden">
         <div class="grid2">
-          <div class="card panel superadmin-only hidden" id="branchPanel">
-            <h3>Branches</h3>
-            <p class="note">Only you (super admin) can see this. Each branch's residents, items, and charges are kept completely separate.</p>
-            <div class="field"><label>Branch Name</label><input id="newBranchName" placeholder="e.g. Jelutong Branch"></div>
-            <div class="field"><label>Copy items from (optional)</label><select id="newBranchCopyFrom"><option value="">Start empty</option></select></div>
-            <button id="addBranchBtn" class="btn btn-primary">Add Branch</button>
-            <div id="branchList" class="list" style="margin-top:14px"></div>
-          </div>
           <div class="card panel">
             <h3>Residents</h3>
             <div class="field"><label>Resident Name</label><input id="newResidentName" placeholder="e.g. Resident A"></div>
@@ -294,6 +289,16 @@
             <div class="field"><label>Category</label><select id="newItemCategory"><option>Stock</option><option>Machine Rental</option><option>Package</option><option>Service</option></select></div>
             <button id="addItemBtn" class="btn btn-primary">Add Item</button>
           </div>
+        </div>
+      </section>
+      <section id="branchesTab" class="hidden">
+        <div class="card panel" style="max-width:480px">
+          <h3>Branches</h3>
+          <p class="note">Only you (super admin) can see this. Each branch's residents, items, and charges are kept completely separate.</p>
+          <div class="field"><label>Branch Name</label><input id="newBranchName" placeholder="e.g. Jelutong Branch"></div>
+          <div class="field"><label>Copy items from (optional)</label><select id="newBranchCopyFrom"><option value="">Start empty</option></select></div>
+          <button id="addBranchBtn" class="btn btn-primary">Add Branch</button>
+          <div id="branchList" class="list" style="margin-top:14px"></div>
         </div>
       </section>
       <section id="staffTab" class="hidden">
@@ -3291,12 +3296,22 @@ document
           requestedTab === 'recurring' ||
           requestedTab === 'setup' ||
           requestedTab === 'staff' ||
+          requestedTab === 'branches' ||
           requestedTab === 'audit' ||
           requestedTab === 'backups'
         )
       ) {
 
         toast('Admin access required');
+        return;
+      }
+
+      // Branches tab is super-admin only
+      if (
+        requestedTab === 'branches' &&
+        currentUserRole !== 'super_admin'
+      ) {
+        toast('Super admin access required');
         return;
       }
 
@@ -3316,6 +3331,7 @@ document
         'recurring',
         'setup',
         'staff',
+        'branches',
         'audit',
         'backups'
       ].forEach(t => {
