@@ -140,6 +140,7 @@
       <span class="topbar-logo-wrap"><img src="logo.png?v=e5a4019a7248" alt="MG Bayan Lepas logo" class="topbar-logo"></span>
       <div class="brand">MG Bayan Lepas<small>Relau Branch · Mintygreen</small></div>
 <div class="spacer"></div>
+<select id="branchSwitcher" class="superadmin-only hidden" style="border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:8px;padding:7px 9px;font-size:12px;font-weight:700"></select>
 <select id="themeSelect" class="admin-only" style="border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:8px;padding:7px 9px;font-size:12px;font-weight:700">
   <option value="mint">Mint Green</option>
   <option value="ocean">Ocean Blue</option>
@@ -264,6 +265,13 @@
 
       <section id="setupTab" class="hidden">
         <div class="grid2">
+          <div class="card panel superadmin-only hidden" id="branchPanel">
+            <h3>Branches</h3>
+            <p class="note">Only you (super admin) can see this. Each branch's residents, items, and charges are kept completely separate.</p>
+            <div class="field"><label>Branch Name</label><input id="newBranchName" placeholder="e.g. Jelutong Branch"></div>
+            <button id="addBranchBtn" class="btn btn-primary">Add Branch</button>
+            <div id="branchList" class="list" style="margin-top:14px"></div>
+          </div>
           <div class="card panel">
             <h3>Residents</h3>
             <div class="field"><label>Resident Name</label><input id="newResidentName" placeholder="e.g. Resident A"></div>
@@ -390,6 +398,7 @@ const SUPABASE_ANON_KEY = 'sb_publishable_VpqWrjBfc0XoawJ8CGYrcw_GdGL4bPy';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const $=id=>document.getElementById(id);
 let currentUser=null,residents=[],items=[],entries=[],recurring=[],currentUserRole='staff',currentCycleLocked=false,saveTimer=null;
+let currentUserBranchId=null,currentBranchId=null,branches=[];
 let recurringOverrides = [];
 let recurringPriceHistory = [];
 const money=n=>new Intl.NumberFormat('en-MY',{style:'currency',currency:'MYR'}).format(Number(n||0)).replace('MYR','RM');
@@ -584,9 +593,10 @@ await enterApp(data.user);
 async function enterApp(user){
   currentUser=user;
   await loadCurrentUserRole();
-  $('userEmail').textContent=user.email;$('loginView').classList.add('hidden');$('appView').classList.remove('hidden');await Promise.all([loadResidents(),loadItems()]);renderSelectors();renderResidentList();await loadRecurring();renderCalendar();}
-async function loadResidents(){const {data,error}=await sb.from('residents').select('*').eq('active',true).order('name');if(error)throw error;residents=data||[]}
-async function loadItems(){const {data,error}=await sb.from('items').select('*').eq('active',true).order('sort_order').order('name');if(error)throw error;items=data||[]}
+  await loadBranchContext();
+  $('userEmail').textContent=user.email;$('loginView').classList.add('hidden');$('appView').classList.remove('hidden');await Promise.all([loadResidents(),loadItems()]);renderSelectors();renderResidentList();renderBranchList();await loadRecurring();renderCalendar();}
+async function loadResidents(){const {data,error}=await sb.from('residents').select('*').eq('active',true).eq('branch_id',currentBranchId).order('name');if(error)throw error;residents=data||[]}
+async function loadItems(){const {data,error}=await sb.from('items').select('*').eq('active',true).eq('branch_id',currentBranchId).order('sort_order').order('name');if(error)throw error;items=data||[]}
 function renderSelectors() {
 
   const opts =
@@ -1397,7 +1407,7 @@ if (endDate < data.start_date) {
 
   await loadRecurring();
   await loadMonth();
-};$('addResidentBtn').onclick=async()=>{const name=$('newResidentName').value.trim(),room_ref=$('newResidentRoom').value.trim();if(!name)return toast('Enter resident name');const {error}=await sb.from('residents').insert({name,room_ref,active:true});if(error)return toast(error.message);$('newResidentName').value='';$('newResidentRoom').value='';await loadResidents();renderSelectors();renderResidentList();toast('Resident added')};
+};$('addResidentBtn').onclick=async()=>{const name=$('newResidentName').value.trim(),room_ref=$('newResidentRoom').value.trim();if(!name)return toast('Enter resident name');if(!currentBranchId)return toast('No active branch selected');const {error}=await sb.from('residents').insert({name,room_ref,active:true,branch_id:currentBranchId});if(error)return toast(error.message);$('newResidentName').value='';$('newResidentRoom').value='';await loadResidents();renderSelectors();renderResidentList();toast('Resident added')};
 
 async function loadRecurringPricingData() {
   const overrideResult = await sb
@@ -1431,7 +1441,7 @@ async function loadRecurringPricingData() {
 }
 function renderResidentList(){$('residentList').innerHTML=residents.length?residents.map(r=>`<div class="row"><div><strong>${esc(r.name)}</strong><br><small>${esc(r.room_ref||'No room reference')}</small></div><span class="badge">ACTIVE</span><button class="btn btn-danger" onclick="deactivateResident('${r.id}')">Deactivate</button></div>`).join(''):'<div class="row"><small>No residents yet.</small></div>'}
 window.deactivateResident=async id=>{if(!confirm('Deactivate this resident? Existing records will remain.'))return;const {error}=await sb.from('residents').update({active:false}).eq('id',id);if(error)return toast(error.message);await loadResidents();renderSelectors();renderResidentList();toast('Resident deactivated')};
-$('addItemBtn').onclick=async()=>{const name=$('newItemName').value.trim(),unit=$('newItemUnit').value.trim(),price=$('newItemPrice').value===''?null:Number($('newItemPrice').value),category=$('newItemCategory').value;if(!name)return toast('Enter item name');const {error}=await sb.from('items').insert({name,unit,price,category,active:true,sort_order:999});if(error)return toast(error.message);await loadItems();renderSelectors();renderCalendar();toast('Item added')};
+$('addItemBtn').onclick=async()=>{const name=$('newItemName').value.trim(),unit=$('newItemUnit').value.trim(),price=$('newItemPrice').value===''?null:Number($('newItemPrice').value),category=$('newItemCategory').value;if(!name)return toast('Enter item name');if(!currentBranchId)return toast('No active branch selected');const {error}=await sb.from('items').insert({name,unit,price,category,active:true,sort_order:999,branch_id:currentBranchId});if(error)return toast(error.message);await loadItems();renderSelectors();renderCalendar();toast('Item added')};
 
 $('exportBtn').onclick = () => {
 
@@ -3340,7 +3350,7 @@ async function loadCurrentUserRole() {
 
   const { data, error } = await sb
     .from('profiles')
-    .select('role')
+    .select('role, branch_id')
     .eq('id', currentUser.id)
     .single();
 
@@ -3351,13 +3361,65 @@ async function loadCurrentUserRole() {
   }
 
   currentUserRole = data?.role || 'staff';
+  currentUserBranchId = data?.branch_id || null;
 
   applyRoleAccess();
 }
+async function loadBranchContext() {
+  const { data, error } = await sb.from('branches').select('*').order('name');
+  if (error) { console.error('Could not load branches:', error); branches = []; }
+  else branches = data || [];
+
+  if (currentUserRole === 'super_admin') {
+    const saved = localStorage.getItem('mgbl_active_branch');
+    currentBranchId = branches.find(b => b.id === saved)?.id
+      || branches[0]?.id
+      || null;
+  } else {
+    currentBranchId = currentUserBranchId;
+  }
+
+  renderBranchSwitcher();
+}
+function renderBranchSwitcher() {
+  const sel = $('branchSwitcher');
+  if (!sel) return;
+  sel.innerHTML = branches.map(b =>
+    `<option value="${b.id}">${esc(b.name)}</option>`
+  ).join('');
+  if (currentBranchId) sel.value = currentBranchId;
+  sel.onchange = async () => {
+    currentBranchId = sel.value;
+    localStorage.setItem('mgbl_active_branch', currentBranchId);
+    await Promise.all([loadResidents(), loadItems()]);
+    renderSelectors(); renderResidentList();
+    await loadRecurring(); renderCalendar();
+    toast(`Switched to ${branches.find(b => b.id === currentBranchId)?.name || 'branch'}`);
+  };
+}
+function renderBranchList() {
+  const el = $('branchList');
+  if (!el) return;
+  el.innerHTML = branches.map(b =>
+    `<div class="row"><span>${esc(b.name)}</span></div>`
+  ).join('') || '<div class="row"><small>No branches yet.</small></div>';
+}
+if ($('addBranchBtn')) $('addBranchBtn').onclick = async () => {
+  const name = $('newBranchName').value.trim();
+  if (!name) return toast('Enter a branch name');
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  const { error } = await sb.from('branches').insert({ name, slug });
+  if (error) return toast(error.message);
+  $('newBranchName').value = '';
+  await loadBranchContext();
+  renderBranchList();
+  toast('Branch added');
+};
 function applyRoleAccess() {
 
   const isAdmin =
     currentUserRole === 'admin' || currentUserRole === 'super_admin';
+  const isSuperAdmin = currentUserRole === 'super_admin';
 
   document
     .querySelectorAll('.admin-only')
@@ -3368,6 +3430,12 @@ function applyRoleAccess() {
         !isAdmin
       );
 
+    });
+
+  document
+    .querySelectorAll('.superadmin-only')
+    .forEach(el => {
+      el.classList.toggle('hidden', !isSuperAdmin);
     });
 
   if ($('userRole')) {
