@@ -139,7 +139,7 @@
   <div id="appView" class="hidden">
     <header class="topbar">
       <span class="topbar-logo-wrap"><img src="logo.png?v=e5a4019a7248" alt="MG Bayan Lepas logo" class="topbar-logo"></span>
-      <div class="brand">MG Bayan Lepas<small>Relau Branch · Mintygreen</small></div>
+      <div class="brand">MG Bayan Lepas<small id="brandSubtitle">Mintygreen</small></div>
 <div class="spacer"></div>
 <select id="branchSwitcher" class="superadmin-only hidden" style="border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:8px;padding:7px 9px;font-size:12px;font-weight:700"></select>
 <select id="themeSelect" class="admin-only" style="border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:8px;padding:7px 9px;font-size:12px;font-weight:700">
@@ -148,6 +148,7 @@
   <option value="slate">Slate Gray</option>
   <option value="amber">Warm Amber</option>
 </select>
+<span id="activeBranchChip" class="badge" style="background:rgba(255,255,255,.15);color:#fff;margin-right:6px"></span>
 <span id="userEmail" class="user-chip"></span><span id="userRole" class="badge"></span>
       <button id="logoutBtn" class="btn btn-light">Log out</button>
     </header>
@@ -864,7 +865,7 @@ function renderCalendar() {
 
   renderMonthlyRecurringDisplay();
     updateSummary();
-}async function saveQty(ev){const input=ev.target,rid=$('residentSelect').value;if(!rid)return;const qty=Number(input.value||0),item=items.find(i=>i.id===input.dataset.item);if(!item)return;setStatus('Saving…');let error;if(qty<=0&&input.dataset.entry){({error}=await sb.from('charge_entries').delete().eq('id',input.dataset.entry))}else if(qty>0){const payload={resident_id:rid,item_id:item.id,charge_date:input.dataset.date,quantity:qty,unit_price:Number(item.price||0),updated_by:currentUser.id};if(input.dataset.entry)({error}=await sb.from('charge_entries').update(payload).eq('id',input.dataset.entry));else {const res=await sb.from('charge_entries').insert({...payload,created_by:currentUser.id}).select().single();error=res.error;if(res.data)input.dataset.entry=res.data.id}}if(error){setStatus(error.message,'err');return}input.classList.toggle('nonzero',qty>0);await loadMonth();setStatus('Saved','ok')}
+}async function saveQty(ev){const input=ev.target,rid=$('residentSelect').value;if(!rid)return;if(!currentBranchId){setStatus('No active branch selected — reselect a branch and retry','err');return}const qty=Number(input.value||0),item=items.find(i=>i.id===input.dataset.item);if(!item)return;setStatus('Saving…');let error;if(qty<=0&&input.dataset.entry){({error}=await sb.from('charge_entries').delete().eq('id',input.dataset.entry))}else if(qty>0){const payload={resident_id:rid,item_id:item.id,charge_date:input.dataset.date,quantity:qty,unit_price:Number(item.price||0),updated_by:currentUser.id,branch_id:currentBranchId};if(input.dataset.entry)({error}=await sb.from('charge_entries').update(payload).eq('id',input.dataset.entry));else {const res=await sb.from('charge_entries').insert({...payload,created_by:currentUser.id}).select().single();error=res.error;if(res.data)input.dataset.entry=res.data.id}}if(error){setStatus(error.message,'err');return}input.classList.toggle('nonzero',qty>0);await loadMonth();setStatus('Saved','ok')}
 function getRecurringAmountForMonth(recurringCharge, billingMonth) {
   const originalAmount =
     Number(recurringCharge.amount) || 0;
@@ -1068,7 +1069,8 @@ function updateSummary() {
       start_date,
       end_date,
       active: true,
-      created_by: currentUser.id
+      created_by: currentUser.id,
+      branch_id: currentBranchId
     });
 
   if (error) {
@@ -1087,6 +1089,7 @@ async function loadRecurring() {
   const { data, error } = await sb
     .from('recurring_charges')
     .select('*, residents(name), items(name,unit)')
+    .eq('branch_id', currentBranchId)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -1235,7 +1238,8 @@ window.editRecurringPrice = async id => {
         amount: newAmount,
         effective_billing_month: effectiveMonth,
         reason: reason.trim() || null,
-        created_by: currentUser.id
+        created_by: currentUser.id,
+        branch_id: currentBranchId
       },
       {
         onConflict:
@@ -1329,7 +1333,8 @@ window.setRecurringSpecialMonth = async id => {
         billing_month: specialMonth,
         special_amount: specialAmount,
         reason: reason.trim() || null,
-        created_by: currentUser.id
+        created_by: currentUser.id,
+        branch_id: currentBranchId
       },
       {
         onConflict:
@@ -3116,6 +3121,7 @@ async function loadBackupsList() {
   const { data: backups, error } = await sb
     .from('data_backups')
     .select('id,label,created_at,created_by')
+    .eq('branch_id', currentBranchId)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -3380,7 +3386,22 @@ async function loadBranchContext() {
     currentBranchId = currentUserBranchId;
   }
 
+  if (!currentBranchId) {
+    console.error('No active branch resolved.', { role: currentUserRole, currentUserBranchId, branches });
+  }
+
   renderBranchSwitcher();
+  updateBranchChip();
+}
+function updateBranchChip() {
+  const chip = $('activeBranchChip');
+  const name = branches.find(b => b.id === currentBranchId)?.name;
+  if (chip) {
+    chip.textContent = name ? `Branch: ${name}` : 'No branch selected';
+    chip.style.background = name ? 'rgba(255,255,255,.15)' : '#c0392b';
+  }
+  const subtitle = $('brandSubtitle');
+  if (subtitle) subtitle.textContent = name ? `${name} · Mintygreen` : 'Mintygreen';
 }
 function renderBranchSwitcher() {
   const sel = $('branchSwitcher');
@@ -3392,6 +3413,7 @@ function renderBranchSwitcher() {
   sel.onchange = async () => {
     currentBranchId = sel.value;
     localStorage.setItem('mgbl_active_branch', currentBranchId);
+    updateBranchChip();
     await Promise.all([loadResidents(), loadItems()]);
     renderSelectors(); renderResidentList();
     await loadRecurring(); renderCalendar();
@@ -3402,9 +3424,50 @@ function renderBranchList() {
   const el = $('branchList');
   if (!el) return;
   el.innerHTML = branches.map(b =>
-    `<div class="row"><span>${esc(b.name)}</span></div>`
+    `<div class="row">
+      <span>${esc(b.name)}</span>
+      <button class="btn btn-light" style="border:1px solid var(--border)" onclick="editBranch('${b.id}')">Rename</button>
+      <button class="btn btn-danger" onclick="deleteBranch('${b.id}')">Delete</button>
+    </div>`
   ).join('') || '<div class="row"><small>No branches yet.</small></div>';
 }
+window.editBranch = async id => {
+  const branch = branches.find(b => b.id === id);
+  if (!branch) return;
+  const newName = prompt('Rename branch:', branch.name);
+  if (newName === null) return;
+  const trimmed = newName.trim();
+  if (!trimmed) return toast('Branch name cannot be empty');
+  const { error } = await sb.from('branches').update({ name: trimmed }).eq('id', id);
+  if (error) return toast(error.message);
+  await loadBranchContext();
+  renderBranchList();
+  toast('Branch renamed');
+};
+window.deleteBranch = async id => {
+  const branch = branches.find(b => b.id === id);
+  if (!branch) return;
+  if (branches.length <= 1) return toast("Can't delete your only branch");
+  const ok = confirm(
+    `Delete "${branch.name}"?\n\nThis only works if the branch has no residents, items, charges, or history left in it. If it still has data, this will be blocked — deactivate/remove that data first.`
+  );
+  if (!ok) return;
+  const { error } = await sb.from('branches').delete().eq('id', id);
+  if (error) {
+    return toast('Could not delete — this branch still has data attached to it.');
+  }
+  if (currentBranchId === id) {
+    localStorage.removeItem('mgbl_active_branch');
+  }
+  await loadBranchContext();
+  renderBranchList();
+  if (currentBranchId !== id) {
+    await Promise.all([loadResidents(), loadItems()]);
+    renderSelectors(); renderResidentList();
+    await loadRecurring(); renderCalendar();
+  }
+  toast('Branch deleted');
+};
 if ($('addBranchBtn')) $('addBranchBtn').onclick = async () => {
   const name = $('newBranchName').value.trim();
   if (!name) return toast('Enter a branch name');
@@ -3464,6 +3527,7 @@ async function loadBillingCycleStatus() {
     .from('billing_cycles')
     .select('is_locked')
     .eq('billing_month', month)
+    .eq('branch_id', currentBranchId)
     .maybeSingle();
 
   if (error) {
@@ -3555,7 +3619,8 @@ $('cycleLockBtn').onclick = async () => {
         locked_by: null,
         updated_at: new Date().toISOString()
       })
-      .eq('billing_month', month);
+      .eq('billing_month', month)
+      .eq('branch_id', currentBranchId);
 
     if (error) {
       return toast(error.message);
@@ -3586,6 +3651,7 @@ $('cycleLockBtn').onclick = async () => {
       .from('billing_cycles')
       .upsert({
         billing_month: month,
+        branch_id: currentBranchId,
         cycle_start: cycle.start,
         cycle_end: cycle.end,
         is_locked: true,
@@ -3593,7 +3659,7 @@ $('cycleLockBtn').onclick = async () => {
         locked_by: currentUser.id,
         updated_at: new Date().toISOString()
       }, {
-        onConflict: 'billing_month'
+        onConflict: 'billing_month,branch_id'
       });
 
     if (error) {
@@ -3644,6 +3710,7 @@ async function loadAuditHistory() {
       residents(name),
       items(name)
     `)
+    .eq('branch_id', currentBranchId)
     .gte('charge_date', cycle.start)
     .lte('charge_date', cycle.end)
     .order('changed_at', {
@@ -3695,6 +3762,7 @@ let recurringAuditQuery = sb
     changed_at
   `)
   .eq('billing_month', month)
+  .eq('branch_id', currentBranchId)
   .order('changed_at', {
     ascending: false
   });
