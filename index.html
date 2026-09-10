@@ -3357,7 +3357,7 @@ async function loadCurrentUserRole() {
 function applyRoleAccess() {
 
   const isAdmin =
-    currentUserRole === 'admin';
+    currentUserRole === 'admin' || currentUserRole === 'super_admin';
 
   document
     .querySelectorAll('.admin-only')
@@ -3373,9 +3373,11 @@ function applyRoleAccess() {
   if ($('userRole')) {
 
     $('userRole').textContent =
-      isAdmin
-        ? 'ADMIN'
-        : 'STAFF';
+      currentUserRole === 'super_admin'
+        ? 'SUPER ADMIN'
+        : isAdmin
+          ? 'ADMIN'
+          : 'STAFF';
 
   }
 }
