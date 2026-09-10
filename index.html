@@ -1161,7 +1161,7 @@ const list = (data || []).filter(x =>
       `;
 }
 window.editRecurringPrice = async id => {
-  if (currentUserRole !== 'admin') {
+  if (currentUserRole !== 'admin' && currentUserRole !== 'super_admin') {
     toast('Admin access only');
     return;
   }
@@ -1255,7 +1255,7 @@ window.editRecurringPrice = async id => {
 };
 
 window.setRecurringSpecialMonth = async id => {
-  if (currentUserRole !== 'admin') {
+  if (currentUserRole !== 'admin' && currentUserRole !== 'super_admin') {
     toast('Admin access only');
     return;
   }
@@ -3262,7 +3262,7 @@ document
 
       // Staff cannot open Admin-only tabs
       if (
-        currentUserRole !== 'admin' &&
+        currentUserRole !== 'admin' && currentUserRole !== 'super_admin' &&
         (
           requestedTab === 'recurring' ||
           requestedTab === 'setup' ||
@@ -3511,7 +3511,7 @@ function applyBillingCycleStatus() {
 }
 $('cycleLockBtn').onclick = async () => {
 
-  if (currentUserRole !== 'admin') {
+  if (currentUserRole !== 'admin' && currentUserRole !== 'super_admin') {
     return toast('Admin access required');
   }
 
@@ -3610,7 +3610,7 @@ $('cycleLockBtn').onclick = async () => {
 };
 async function loadAuditHistory() {
 
-  if (currentUserRole !== 'admin') {
+  if (currentUserRole !== 'admin' && currentUserRole !== 'super_admin') {
     return toast('Admin access required');
   }
 
