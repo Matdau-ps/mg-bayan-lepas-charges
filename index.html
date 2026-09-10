@@ -24,7 +24,8 @@
     .brand{font-weight:850}.brand small{display:block;font-weight:500;opacity:.8;font-size:11px}.spacer{flex:1}.user-chip{font-size:12px;opacity:.9}.btn{border:0;border-radius:9px;padding:10px 13px;font-weight:750;cursor:pointer}.btn-primary{background:var(--green);color:white}.btn-light{background:white;color:var(--green2)}.btn-ghost{background:transparent;color:inherit;border:1px solid currentColor}.btn-danger{background:#fff0ef;color:var(--red);border:1px solid #efc8c4}
     .wrap{max-width:1550px;margin:18px auto;padding:0 16px}.card{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow)}
     .login{max-width:420px;margin:10vh auto;padding:26px}.login h1{margin:0 0 5px}.sub{color:var(--muted);font-size:13px;margin-bottom:20px}.field{margin-bottom:14px}.field label{display:block;font-size:12px;font-weight:800;margin-bottom:6px}.field input,.field select,.toolbar select,.toolbar input{width:100%;border:1px solid #c9d5d1;border-radius:9px;padding:10px 11px;background:white;outline:none}.field input:focus,.field select:focus,.toolbar select:focus,.toolbar input:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(23,107,91,.1)}
-    .toolbar{padding:14px;display:grid;grid-template-columns:minmax(200px,260px) 190px auto auto auto auto;gap:10px;align-items:end;margin-bottom:12px}.toolbar .tfield label{display:block;font-size:11px;font-weight:800;color:var(--muted);margin-bottom:5px}
+    .toolbar{padding:14px;display:grid;grid-template-columns:minmax(280px,380px) 190px 110px auto auto auto;gap:10px;align-items:end;margin-bottom:12px}.toolbar .tfield label{display:block;font-size:11px;font-weight:800;color:var(--muted);margin-bottom:5px}
+    .btn-compact{padding:8px 11px;font-size:12.5px}
     .toolbar-actions{padding:12px 14px;margin-bottom:12px;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
     .action-group{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
     .action-group+.action-group{padding-left:14px;border-left:1px solid var(--border)}
@@ -190,7 +191,7 @@
 
 <button
   id="backupDataBtn"
-  class="btn btn-light admin-only"
+  class="btn btn-light btn-compact admin-only"
   style="border:1px solid var(--border)"
 >
   Backup Data
@@ -198,7 +199,7 @@
 
 <button
   id="cycleLockBtn"
-  class="btn btn-light admin-only"
+  class="btn btn-light btn-compact admin-only"
   style="border:1px solid var(--border)"
 >
   Close Billing Cycle
