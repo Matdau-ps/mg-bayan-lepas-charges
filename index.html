@@ -3456,17 +3456,59 @@ window.deleteBranch = async id => {
   const branch = branches.find(b => b.id === id);
   if (!branch) return;
   if (branches.length <= 1) return toast("Can't delete your only branch");
+
   const ok = confirm(
-    `Delete "${branch.name}"?\n\nThis only works if the branch has no residents, items, charges, or history left in it. If it still has data, this will be blocked — deactivate/remove that data first.`
+    `Delete "${branch.name}"?\n\nThis only works cleanly if the branch has no residents, items, charges, or history left. If it still has data, you'll be offered a "force delete" option next that wipes everything in it.`
   );
   if (!ok) return;
+
   const { error } = await sb.from('branches').delete().eq('id', id);
-  if (error) {
-    return toast('Could not delete — this branch still has data attached to it.');
+  if (!error) {
+    if (currentBranchId === id) localStorage.removeItem('mgbl_active_branch');
+    await loadBranchContext();
+    renderBranchList();
+    if (currentBranchId !== id) {
+      await Promise.all([loadResidents(), loadItems()]);
+      renderSelectors(); renderResidentList();
+      await loadRecurring(); renderCalendar();
+    }
+    return toast('Branch deleted');
   }
-  if (currentBranchId === id) {
-    localStorage.removeItem('mgbl_active_branch');
+
+  // Blocked because the branch still has data — offer a guarded force-purge.
+  const typed = prompt(
+    `"${branch.name}" still has data attached (residents, items, charges, or history).\n\nTo permanently delete EVERYTHING in this branch and the branch itself, type its exact name below. This cannot be undone.`
+  );
+  if (typed !== branch.name) {
+    if (typed !== null) toast('Name did not match — nothing was deleted');
+    return;
   }
+
+  toast('Purging branch data…');
+  const tablesInOrder = [
+    'recurring_charge_overrides',
+    'recurring_charge_price_history',
+    'recurring_charge_audit_log',
+    'charge_audit_log',
+    'charge_entries',
+    'recurring_charges',
+    'billing_cycles',
+    'data_backups',
+    'items',
+    'residents'
+  ];
+  for (const table of tablesInOrder) {
+    const { error: purgeErr } = await sb.from(table).delete().eq('branch_id', id);
+    if (purgeErr) {
+      return toast(`Purge failed at ${table}: ${purgeErr.message}`);
+    }
+  }
+  const { error: finalErr } = await sb.from('branches').delete().eq('id', id);
+  if (finalErr) {
+    return toast(`Data purged, but branch row still failed to delete: ${finalErr.message}`);
+  }
+
+  if (currentBranchId === id) localStorage.removeItem('mgbl_active_branch');
   await loadBranchContext();
   renderBranchList();
   if (currentBranchId !== id) {
@@ -3474,7 +3516,7 @@ window.deleteBranch = async id => {
     renderSelectors(); renderResidentList();
     await loadRecurring(); renderCalendar();
   }
-  toast('Branch deleted');
+  toast(`"${branch.name}" and all its data were permanently deleted`);
 };
 if ($('addBranchBtn')) $('addBranchBtn').onclick = async () => {
   const name = $('newBranchName').value.trim();
