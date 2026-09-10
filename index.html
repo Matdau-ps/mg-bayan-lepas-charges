@@ -271,6 +271,7 @@
             <h3>Branches</h3>
             <p class="note">Only you (super admin) can see this. Each branch's residents, items, and charges are kept completely separate.</p>
             <div class="field"><label>Branch Name</label><input id="newBranchName" placeholder="e.g. Jelutong Branch"></div>
+            <div class="field"><label>Copy items from (optional)</label><select id="newBranchCopyFrom"><option value="">Start empty</option></select></div>
             <button id="addBranchBtn" class="btn btn-primary">Add Branch</button>
             <div id="branchList" class="list" style="margin-top:14px"></div>
           </div>
@@ -3422,14 +3423,20 @@ function renderBranchSwitcher() {
 }
 function renderBranchList() {
   const el = $('branchList');
-  if (!el) return;
-  el.innerHTML = branches.map(b =>
-    `<div class="row">
-      <span>${esc(b.name)}</span>
-      <button class="btn btn-light" style="border:1px solid var(--border)" onclick="editBranch('${b.id}')">Rename</button>
-      <button class="btn btn-danger" onclick="deleteBranch('${b.id}')">Delete</button>
-    </div>`
-  ).join('') || '<div class="row"><small>No branches yet.</small></div>';
+  if (el) {
+    el.innerHTML = branches.map(b =>
+      `<div class="row">
+        <span>${esc(b.name)}</span>
+        <button class="btn btn-light" style="border:1px solid var(--border)" onclick="editBranch('${b.id}')">Rename</button>
+        <button class="btn btn-danger" onclick="deleteBranch('${b.id}')">Delete</button>
+      </div>`
+    ).join('') || '<div class="row"><small>No branches yet.</small></div>';
+  }
+  const copyFrom = $('newBranchCopyFrom');
+  if (copyFrom) {
+    copyFrom.innerHTML = '<option value="">Start empty</option>' +
+      branches.map(b => `<option value="${b.id}">Copy items from ${esc(b.name)}</option>`).join('');
+  }
 }
 window.editBranch = async id => {
   const branch = branches.find(b => b.id === id);
@@ -3471,13 +3478,33 @@ window.deleteBranch = async id => {
 if ($('addBranchBtn')) $('addBranchBtn').onclick = async () => {
   const name = $('newBranchName').value.trim();
   if (!name) return toast('Enter a branch name');
+  const copyFromId = $('newBranchCopyFrom')?.value || '';
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-  const { error } = await sb.from('branches').insert({ name, slug });
+  const { data: newBranch, error } = await sb.from('branches').insert({ name, slug }).select().single();
   if (error) return toast(error.message);
+
+  if (copyFromId) {
+    const { data: sourceItems, error: itemsErr } = await sb
+      .from('items')
+      .select('name,unit,price,category,active,sort_order')
+      .eq('branch_id', copyFromId);
+    if (itemsErr) {
+      toast(`Branch created, but copying items failed: ${itemsErr.message}`);
+    } else if (sourceItems?.length) {
+      const copies = sourceItems.map(i => ({ ...i, branch_id: newBranch.id }));
+      const { error: insertErr } = await sb.from('items').insert(copies);
+      if (insertErr) toast(`Branch created, but copying items failed: ${insertErr.message}`);
+      else toast(`Branch added with ${copies.length} item(s) copied`);
+    } else {
+      toast('Branch added (source branch had no items to copy)');
+    }
+  } else {
+    toast('Branch added');
+  }
+
   $('newBranchName').value = '';
   await loadBranchContext();
   renderBranchList();
-  toast('Branch added');
 };
 function applyRoleAccess() {
 
