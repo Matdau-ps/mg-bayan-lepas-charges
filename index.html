@@ -164,6 +164,9 @@
   <button class="btn tab admin-only" data-tab="setup">
     Residents & Items
   </button>
+  <button class="btn tab admin-only" data-tab="staff">
+    Staff
+  </button>
   <button class="btn tab admin-only" data-tab="audit">
   Audit History
 </button>
@@ -267,16 +270,6 @@
 
       <section id="setupTab" class="hidden">
         <div class="grid2">
-          <div class="card panel admin-only" id="staffPanel">
-            <h3>Staff</h3>
-            <p class="note">Add a login for someone on your team. They'll use the email/password you set here to sign in.</p>
-            <div class="field"><label>Full Name</label><input id="newStaffName" placeholder="e.g. Aina binti Kassim"></div>
-            <div class="field"><label>Email</label><input id="newStaffEmail" type="email" placeholder="staff@example.com"></div>
-            <div class="field"><label>Temporary Password</label><input id="newStaffPassword" type="text" placeholder="Set a temporary password"></div>
-            <div class="field superadmin-only hidden" id="staffBranchField"><label>Branch</label><select id="newStaffBranch"></select></div>
-            <div class="field superadmin-only hidden" id="staffRoleField"><label>Role</label><select id="newStaffRole"><option value="staff">Staff</option><option value="admin">Branch Admin</option></select></div>
-            <button id="addStaffBtn" class="btn btn-primary">Add Staff</button>
-          </div>
           <div class="card panel superadmin-only hidden" id="branchPanel">
             <h3>Branches</h3>
             <p class="note">Only you (super admin) can see this. Each branch's residents, items, and charges are kept completely separate.</p>
@@ -301,6 +294,18 @@
             <div class="field"><label>Category</label><select id="newItemCategory"><option>Stock</option><option>Machine Rental</option><option>Package</option><option>Service</option></select></div>
             <button id="addItemBtn" class="btn btn-primary">Add Item</button>
           </div>
+        </div>
+      </section>
+      <section id="staffTab" class="hidden">
+        <div class="card panel" style="max-width:480px">
+          <h3>Staff</h3>
+          <p class="note">Add a login for someone on your team. They'll use the email/password you set here to sign in.</p>
+          <div class="field"><label>Full Name</label><input id="newStaffName" placeholder="e.g. Aina binti Kassim"></div>
+          <div class="field"><label>Email</label><input id="newStaffEmail" type="email" placeholder="staff@example.com"></div>
+          <div class="field"><label>Temporary Password</label><input id="newStaffPassword" type="text" placeholder="Set a temporary password"></div>
+          <div class="field superadmin-only hidden" id="staffBranchField"><label>Branch</label><select id="newStaffBranch"></select></div>
+          <div class="field superadmin-only hidden" id="staffRoleField"><label>Role</label><select id="newStaffRole"><option value="staff">Staff</option><option value="admin">Branch Admin</option></select></div>
+          <button id="addStaffBtn" class="btn btn-primary">Add Staff</button>
         </div>
       </section>
       <section id="auditTab" class="hidden">
@@ -3285,6 +3290,7 @@ document
         (
           requestedTab === 'recurring' ||
           requestedTab === 'setup' ||
+          requestedTab === 'staff' ||
           requestedTab === 'audit' ||
           requestedTab === 'backups'
         )
@@ -3309,6 +3315,7 @@ document
         'charges',
         'recurring',
         'setup',
+        'staff',
         'audit',
         'backups'
       ].forEach(t => {
