@@ -73,6 +73,10 @@ main{max-width:620px;margin:auto;padding:12px 12px calc(90px + env(safe-area-ins
     <h3>Account</h3>
     <div class="note">Signed in as</div>
     <div id="accountEmail" class="account-email">-</div>
+      <div id="mobileBranchField" class="field hidden" style="margin-top:14px">
+        <label>Active Branch</label>
+        <select id="mobileBranchSelect"></select>
+      </div>
   </div>
   <div class="card">
     <strong>Mintygreen Charges</strong>
@@ -92,7 +96,7 @@ const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 const $=id=>document.getElementById(id), money=n=>'RM '+Number(n||0).toFixed(2);
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
 const iso=d=>{const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`};
-let user=null,profile=null,branchId=null,residents=[],itemList=[],entries=[],selectedDate=iso(new Date()),locked=false,turnstileWidgetId=null,captchaToken=null,deferredPrompt=null;
+let user=null,profile=null,branchId=null,branchList=[],residents=[],itemList=[],entries=[],selectedDate=iso(new Date()),locked=false,turnstileWidgetId=null,captchaToken=null,deferredPrompt=null;
 
 function turnstileConfigured(){return !!TURNSTILE_SITE_KEY && !TURNSTILE_SITE_KEY.includes('PASTE_')}
 function renderTurnstile(){
@@ -152,6 +156,7 @@ $('loginBtn').onclick=async()=>{
   resetTurnstile();
   location.reload();
 };
+if($('mobileBranchSelect')) $('mobileBranchSelect').onchange=e=>switchMobileBranch(e.target.value);
 $('logoutBtn').onclick=async()=>{await sb.auth.signOut();location.reload()};
 function showMobileScreen(screen){
  const daily=screen==='daily';
@@ -162,6 +167,41 @@ function showMobileScreen(screen){
 }
 $('entryNavBtn').onclick=()=>showMobileScreen('daily');
 $('settingsNavBtn').onclick=()=>showMobileScreen('settings');
+
+
+function renderMobileBranchSelector(){
+  const field=$('mobileBranchField');
+  const select=$('mobileBranchSelect');
+  if(!field||!select) return;
+
+  const isSuper=profile?.role==='super_admin';
+  field.classList.toggle('hidden',!isSuper);
+
+  if(!isSuper) return;
+
+  select.innerHTML=branchList.map(b=>`<option value="${b.id}">${b.name}</option>`).join('');
+  if(branchId) select.value=branchId;
+}
+
+async function switchMobileBranch(newBranchId){
+  if(profile?.role!=='super_admin') return;
+  if(!branchList.some(b=>b.id===newBranchId)) return;
+
+  branchId=newBranchId;
+  localStorage.setItem('mgbl_active_branch',branchId);
+
+  if($('residentSelect')) $('residentSelect').innerHTML='<option value="">Loading residents…</option>';
+  if($('entryList')) $('entryList').innerHTML='';
+
+  await Promise.all([loadResidents(),loadItems()]);
+  renderResidentOptions();
+
+  selectedDate=clampDate(selectedDate);
+  await loadDay();
+
+  const branch=branchList.find(b=>b.id===branchId);
+  if($('saveStatus')) $('saveStatus').textContent=branch?`Switched to ${branch.name}`:'Branch switched';
+}
 
 async function start(u){
  user=u;
@@ -180,6 +220,7 @@ async function start(u){
      return;
    }
 
+   branchList=branchRows;
    const savedBranch=localStorage.getItem('mgbl_active_branch');
    branchId=branchRows.some(b=>b.id===savedBranch)
      ? savedBranch
@@ -192,7 +233,7 @@ async function start(u){
    return;
  }
 
- $('accountEmail').textContent=u.email||p.email||'-';
+ $('accountEmail').textContent=u.email||p.email||'-';renderMobileBranchSelector();
  $('loginView').classList.add('hidden');$('appView').classList.remove('hidden');
  const [{data:r,error:re},{data:i,error:ie},{data:b}] = await Promise.all([
   sb.from('residents').select('*').eq('active',true).eq('branch_id',branchId).order('name'),
@@ -239,7 +280,7 @@ async function promptInstall(){
 }
 $('installBtn').onclick=promptInstall;
 $('settingsInstallBtn').onclick=promptInstall;
-if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js?v=6');
+if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js?v=7');
 
 (async()=>{const {data:{session}}=await sb.auth.getSession();if(session)start(session.user);else renderTurnstile()})();
 </script>
