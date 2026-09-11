@@ -665,16 +665,46 @@ if (session) {
 }  
  }
 $('loginBtn').onclick=async()=>{
+  const btn=$('loginBtn');
   $('loginMsg').textContent='';
   if(!requireCaptcha($('loginMsg'))) return;
-  const credentials={email:$('email').value.trim(),password:$('password').value};
+
+  const email=$('email').value.trim();
+  const password=$('password').value;
+  if(!email || !password){
+    $('loginMsg').textContent='Please enter your email and password.';
+    return;
+  }
+
+  btn.disabled=true;
+  const originalText=btn.textContent;
+  btn.textContent='Logging in…';
+
+  const credentials={email,password};
   if(turnstileConfigured()) credentials.options={captchaToken};
+
   const {data,error}=await sb.auth.signInWithPassword(credentials);
-  if(error){$('loginMsg').textContent=error.message;resetTurnstile();return}
+  if(error){
+    $('loginMsg').textContent=error.message;
+    resetTurnstile();
+    btn.disabled=false;
+    btn.textContent=originalText;
+    return;
+  }
+
   resetTurnstile();
   const needsSetup=await needsPasswordSetup(data.user);
-  if(needsSetup){showPasswordSetup(data.user);return}
-  await enterApp(data.user)
+  if(needsSetup){
+    btn.disabled=false;
+    btn.textContent=originalText;
+    showPasswordSetup(data.user);
+    return;
+  }
+
+  $('loginMsg').textContent='Login successful. Opening your account…';
+  // Reload once after a successful sign-in so the app always starts from
+  // the freshly persisted Supabase session. This avoids stale auth UI state.
+  window.location.reload();
 };
 $('forgotPasswordBtn').onclick=()=>{
   const box=$('forgotPasswordBox');
@@ -762,21 +792,40 @@ $('changeEmailBtn').onclick=async()=>{
   setSettingsMessage('changeEmailMsg','Email change requested. Please follow the confirmation email(s) sent by Supabase before the new address takes effect.',true);
 };
 $('changePasswordBtn').onclick=async()=>{
+  const btn=$('changePasswordBtn');
   const currentPassword=$('settingsCurrentPassword').value;
   const newPassword=$('settingsNewPassword').value;
   const confirmPassword=$('settingsConfirmPassword').value;
   setSettingsMessage('changePasswordMsg','');
+
   if(!currentPassword){setSettingsMessage('changePasswordMsg','Please enter your current password.');return}
   if(!newPassword || !confirmPassword){setSettingsMessage('changePasswordMsg','Please enter and confirm your new password.');return}
   if(newPassword!==confirmPassword){setSettingsMessage('changePasswordMsg','New passwords do not match.');return}
   if(newPassword.length<8){setSettingsMessage('changePasswordMsg','New password must be at least 8 characters.');return}
   if(newPassword===currentPassword){setSettingsMessage('changePasswordMsg','Please choose a new password different from your current password.');return}
-  const {error}=await sb.auth.updateUser({password:newPassword,current_password:currentPassword});
-  if(error){setSettingsMessage('changePasswordMsg',error.message);return}
+
+  const originalText=btn.textContent;
+  btn.disabled=true;
+  btn.textContent='Changing…';
+
+  const {error}=await sb.auth.updateUser({
+    password:newPassword,
+    current_password:currentPassword
+  });
+
+  btn.disabled=false;
+  btn.textContent=originalText;
+
+  if(error){
+    setSettingsMessage('changePasswordMsg',error.message);
+    return;
+  }
+
   $('settingsCurrentPassword').value='';
   $('settingsNewPassword').value='';
   $('settingsConfirmPassword').value='';
-  setSettingsMessage('changePasswordMsg','Password changed successfully.',true);
+  setSettingsMessage('changePasswordMsg','✓ Password changed successfully. Use the new password the next time you log in.',true);
+  toast('Password changed successfully');
 };
 
 async function enterApp(user){
@@ -3555,18 +3604,18 @@ document
         loadBackupsList();
       }
 
-// Settings behavior
-if (requestedTab === 'settings' && currentUser) {
-  $('settingsCurrentEmail').value = currentUser.email || '';
-  $('settingsNewEmail').value = '';
-  $('changeEmailMsg').textContent = '';
-  $('changePasswordMsg').textContent = '';
-}
+      // Settings behavior
+      if (requestedTab === 'settings' && currentUser) {
+        $('settingsCurrentEmail').value = currentUser.email || '';
+        $('settingsNewEmail').value = '';
+        $('changeEmailMsg').textContent = '';
+        $('changePasswordMsg').textContent = '';
+      }
 
-// Items behavior
-if (requestedTab === 'items') {
-  loadAllItems();
-}
+      // Items behavior
+      if (requestedTab === 'items') {
+        loadAllItems();
+      }
 
     };
 
