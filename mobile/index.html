@@ -36,6 +36,14 @@ main{max-width:620px;margin:auto;padding:12px 12px calc(90px + env(safe-area-ins
 .saved-ok{color:var(--g);font-weight:800}
 .settings-card h3{margin:0 0 12px}.account-email{font-weight:800;overflow-wrap:anywhere}
 @media(min-width:700px){body:before{content:"Mobile Staff App";position:fixed;right:12px;bottom:12px;color:#94a3a0;font-size:11px}}
+
+    #mobileBranchField{display:block}
+    #mobileBranchField.hidden{display:none!important}
+    @media(max-width:700px){
+      #mobileBranchField{width:100%;margin-left:0!important;margin-top:8px;min-width:0!important}
+      #mobileBranchSelect{width:100%!important}
+    }
+
 </style>
 </head>
 <body>
@@ -51,7 +59,11 @@ main{max-width:620px;margin:auto;padding:12px 12px calc(90px + env(safe-area-ins
 </section>
 
 <section id="appView" class="hidden">
-<header><img src="../logo.png?v=e5a4019a7248" alt="Mintygreen logo" style="height:38px;width:auto;display:block"><div class="brand">Mintygreen Charges<small id="branchName">Daily Entry</small></div><div class="spacer"></div></header>
+<header><img src="../logo.png?v=e5a4019a7248" alt="Mintygreen logo" style="height:38px;width:auto;display:block"><div class="brand">Mintygreen Charges<small id="branchName">Daily Entry</small></div>
+      <div id="mobileBranchField" class="hidden" style="margin-left:auto;min-width:180px">
+        <label for="mobileBranchSelect" style="display:block;font-size:10px;opacity:.8;margin-bottom:3px">Active Branch</label>
+        <select id="mobileBranchSelect" style="width:100%;border:1px solid rgba(255,255,255,.35);background:white;color:#20302c;border-radius:8px;padding:7px 9px;font-size:12px;font-weight:700"></select>
+      </div><div class="spacer"></div></header>
 <main>
 <div class="mobile-nav">
   <button id="entryNavBtn" class="navbtn active">Daily Entry</button>
@@ -73,10 +85,6 @@ main{max-width:620px;margin:auto;padding:12px 12px calc(90px + env(safe-area-ins
     <h3>Account</h3>
     <div class="note">Signed in as</div>
     <div id="accountEmail" class="account-email">-</div>
-      <div id="mobileBranchField" class="field hidden" style="margin-top:14px">
-        <label>Active Branch</label>
-        <select id="mobileBranchSelect"></select>
-      </div>
   </div>
   <div class="card">
     <strong>Mintygreen Charges</strong>
@@ -175,11 +183,18 @@ function renderMobileBranchSelector(){
   if(!field||!select) return;
 
   const isSuper=profile?.role==='super_admin';
-  field.classList.toggle('hidden',!isSuper);
 
-  if(!isSuper) return;
+  if(!isSuper){
+    field.classList.add('hidden');
+    return;
+  }
 
-  select.innerHTML=branchList.map(b=>`<option value="${b.id}">${b.name}</option>`).join('');
+  field.classList.remove('hidden');
+
+  select.innerHTML=branchList
+    .map(b=>`<option value="${b.id}">${b.name}</option>`)
+    .join('');
+
   if(branchId) select.value=branchId;
 }
 
@@ -280,7 +295,7 @@ async function promptInstall(){
 }
 $('installBtn').onclick=promptInstall;
 $('settingsInstallBtn').onclick=promptInstall;
-if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js?v=7');
+if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js?v=8');
 
 (async()=>{const {data:{session}}=await sb.auth.getSession();if(session)start(session.user);else renderTurnstile()})();
 </script>
