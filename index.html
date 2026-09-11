@@ -845,7 +845,10 @@ $('changeEmailBtn').onclick=async()=>{
   btn.textContent='Changing…';
 
   // Use the standard Supabase email update flow.
-  const {data,error}=await sb.auth.updateUser({email:newEmail});
+  const {data,error}=await sb.auth.updateUser(
+    {email:newEmail},
+    {emailRedirectTo:'https://minty-green.github.io/Charges/email-change-success.html'}
+  );
 
   btn.disabled=false;
   btn.textContent=originalText;
