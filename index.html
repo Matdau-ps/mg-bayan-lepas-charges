@@ -162,7 +162,10 @@
   </button>
 
   <button class="btn tab admin-only" data-tab="setup">
-    Residents & Items
+    Residents
+  </button>
+  <button class="btn tab admin-only" data-tab="items">
+    Items
   </button>
   <button class="btn tab admin-only" data-tab="staff">
     Staff
@@ -272,22 +275,30 @@
       </section>
 
       <section id="setupTab" class="hidden">
+        <div class="card panel" style="max-width:480px">
+          <h3>Residents</h3>
+          <div class="field"><label>Resident Name</label><input id="newResidentName" placeholder="e.g. Resident A"></div>
+          <div class="field"><label>Room / Reference</label><input id="newResidentRoom" placeholder="e.g. N16"></div>
+          <button id="addResidentBtn" class="btn btn-primary">Add Resident</button>
+          <div id="residentList" class="list" style="margin-top:14px"></div>
+        </div>
+      </section>
+      <section id="itemsTab" class="hidden">
         <div class="grid2">
           <div class="card panel">
-            <h3>Residents</h3>
-            <div class="field"><label>Resident Name</label><input id="newResidentName" placeholder="e.g. Resident A"></div>
-            <div class="field"><label>Room / Reference</label><input id="newResidentRoom" placeholder="e.g. N16"></div>
-            <button id="addResidentBtn" class="btn btn-primary">Add Resident</button>
-            <div id="residentList" class="list" style="margin-top:14px"></div>
-          </div>
-          <div class="card panel">
-            <h3>Charge Items</h3>
-            <p class="note">Your current manual-form stock list is preloaded by the database setup script. Add new items here when needed.</p>
+            <h3 id="itemFormTitle">Add Item</h3>
+            <p class="note">Your current manual-form stock list is preloaded by the database setup script. Add new items here, or click Edit on an existing item to change it.</p>
             <div class="field"><label>Item</label><input id="newItemName"></div>
             <div class="field"><label>Unit</label><input id="newItemUnit" placeholder="pc / pk / bottle / monthly"></div>
             <div class="field"><label>Price (RM)</label><input id="newItemPrice" type="number" step="0.01" min="0"></div>
             <div class="field"><label>Category</label><select id="newItemCategory"><option>Stock</option><option>Machine Rental</option><option>Package</option><option>Service</option></select></div>
             <button id="addItemBtn" class="btn btn-primary">Add Item</button>
+            <button id="cancelEditItemBtn" class="btn btn-ghost hidden" style="margin-left:8px">Cancel</button>
+            <p class="note" style="margin-top:10px">Editing a price only changes future entries — dates already charged keep the price they were saved at.</p>
+          </div>
+          <div class="card panel">
+            <h3>All Items</h3>
+            <div id="itemList" class="list"></div>
           </div>
         </div>
       </section>
@@ -420,7 +431,7 @@ const SUPABASE_URL = 'https://qppkqopbtaswfwspjxsc.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_VpqWrjBfc0XoawJ8CGYrcw_GdGL4bPy';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const $=id=>document.getElementById(id);
-let currentUser=null,residents=[],items=[],entries=[],recurring=[],currentUserRole='staff',currentCycleLocked=false,saveTimer=null;
+let currentUser=null,residents=[],items=[],allItems=[],editingItemId=null,entries=[],recurring=[],currentUserRole='staff',currentCycleLocked=false,saveTimer=null;
 let currentUserBranchId=null,currentBranchId=null,branches=[];
 let recurringOverrides = [];
 let recurringPriceHistory = [];
@@ -620,6 +631,7 @@ async function enterApp(user){
   $('userEmail').textContent=user.email;$('loginView').classList.add('hidden');$('appView').classList.remove('hidden');await Promise.all([loadResidents(),loadItems()]);renderSelectors();renderResidentList();renderBranchList();await loadRecurring();renderCalendar();}
 async function loadResidents(){const {data,error}=await sb.from('residents').select('*').eq('active',true).eq('branch_id',currentBranchId).order('name');if(error)throw error;residents=data||[]}
 async function loadItems(){const {data,error}=await sb.from('items').select('*').eq('active',true).eq('branch_id',currentBranchId).order('sort_order').order('name');if(error)throw error;items=data||[]}
+async function loadAllItems(){const {data,error}=await sb.from('items').select('*').eq('branch_id',currentBranchId).order('category').order('name');if(error)return toast(error.message);allItems=data||[];renderItemList()}
 function renderSelectors() {
 
   const opts =
@@ -1468,7 +1480,13 @@ async function loadRecurringPricingData() {
 }
 function renderResidentList(){$('residentList').innerHTML=residents.length?residents.map(r=>`<div class="row"><div><strong>${esc(r.name)}</strong><br><small>${esc(r.room_ref||'No room reference')}</small></div><span class="badge">ACTIVE</span><button class="btn btn-danger" onclick="deactivateResident('${r.id}')">Deactivate</button></div>`).join(''):'<div class="row"><small>No residents yet.</small></div>'}
 window.deactivateResident=async id=>{if(!confirm('Deactivate this resident? Existing records will remain.'))return;const {error}=await sb.from('residents').update({active:false}).eq('id',id);if(error)return toast(error.message);await loadResidents();renderSelectors();renderResidentList();toast('Resident deactivated')};
-$('addItemBtn').onclick=async()=>{const name=$('newItemName').value.trim(),unit=$('newItemUnit').value.trim(),price=$('newItemPrice').value===''?null:Number($('newItemPrice').value),category=$('newItemCategory').value;if(!name)return toast('Enter item name');if(!currentBranchId)return toast('No active branch selected');const {error}=await sb.from('items').insert({name,unit,price,category,active:true,sort_order:999,branch_id:currentBranchId});if(error)return toast(error.message);await loadItems();renderSelectors();renderCalendar();toast('Item added')};
+$('addItemBtn').onclick=async()=>{const name=$('newItemName').value.trim(),unit=$('newItemUnit').value.trim(),price=$('newItemPrice').value===''?null:Number($('newItemPrice').value),category=$('newItemCategory').value;if(!name)return toast('Enter item name');if(!currentBranchId)return toast('No active branch selected');if(editingItemId){const {error}=await sb.from('items').update({name,unit,price,category}).eq('id',editingItemId);if(error)return toast(error.message);toast('Item updated');cancelEditItem()}else{const {error}=await sb.from('items').insert({name,unit,price,category,active:true,sort_order:999,branch_id:currentBranchId});if(error)return toast(error.message);toast('Item added');$('newItemName').value='';$('newItemUnit').value='';$('newItemPrice').value='';$('newItemCategory').selectedIndex=0}await loadItems();await loadAllItems();renderSelectors();renderCalendar()};
+$('cancelEditItemBtn').onclick=cancelEditItem;
+function cancelEditItem(){editingItemId=null;$('newItemName').value='';$('newItemUnit').value='';$('newItemPrice').value='';$('newItemCategory').selectedIndex=0;$('itemFormTitle').textContent='Add Item';$('addItemBtn').textContent='Add Item';$('cancelEditItemBtn').classList.add('hidden')}
+window.editItem=id=>{const it=allItems.find(i=>i.id===id);if(!it)return;editingItemId=id;$('newItemName').value=it.name||'';$('newItemUnit').value=it.unit||'';$('newItemPrice').value=it.price??'';$('newItemCategory').value=it.category||'Stock';$('itemFormTitle').textContent='Edit Item';$('addItemBtn').textContent='Save Changes';$('cancelEditItemBtn').classList.remove('hidden');$('newItemName').scrollIntoView({behavior:'smooth',block:'center'})};
+window.deactivateItem=async id=>{if(!confirm('Deactivate this item? It will disappear from new entries, but existing charge records stay untouched.'))return;const {error}=await sb.from('items').update({active:false}).eq('id',id);if(error)return toast(error.message);await loadItems();await loadAllItems();renderSelectors();renderCalendar();toast('Item deactivated')};
+window.reactivateItem=async id=>{const {error}=await sb.from('items').update({active:true}).eq('id',id);if(error)return toast(error.message);await loadItems();await loadAllItems();renderSelectors();renderCalendar();toast('Item reactivated')};
+function renderItemList(){$('itemList').innerHTML=allItems.length?allItems.map(i=>`<div class="row"><div><strong>${esc(i.name)}</strong><br><small>${esc(i.category||'')} · ${esc(i.unit||'—')} · RM ${Number(i.price||0).toFixed(2)}</small></div><span class="badge" style="${i.active?'':'background:#fff0ef;color:var(--red)'}">${i.active?'ACTIVE':'INACTIVE'}</span><div style="display:flex;gap:6px"><button class="btn btn-light btn-compact" style="border:1px solid var(--border)" onclick="editItem('${i.id}')">Edit</button>${i.active?`<button class="btn btn-danger btn-compact" onclick="deactivateItem('${i.id}')">Deactivate</button>`:`<button class="btn btn-primary btn-compact" onclick="reactivateItem('${i.id}')">Reactivate</button>`}</div></div>`).join(''):'<div class="row"><small>No items yet.</small></div>'}
 
 $('exportBtn').onclick = () => {
 
@@ -3295,6 +3313,7 @@ document
         (
           requestedTab === 'recurring' ||
           requestedTab === 'setup' ||
+          requestedTab === 'items' ||
           requestedTab === 'staff' ||
           requestedTab === 'branches' ||
           requestedTab === 'audit' ||
@@ -3330,6 +3349,7 @@ document
         'charges',
         'recurring',
         'setup',
+        'items',
         'staff',
         'branches',
         'audit',
@@ -3377,6 +3397,13 @@ document
         requestedTab === 'backups'
       ) {
         loadBackupsList();
+      }
+
+      // Items behavior
+      if (
+        requestedTab === 'items'
+      ) {
+        loadAllItems();
       }
 
     };
