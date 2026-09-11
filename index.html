@@ -693,18 +693,13 @@ $('loginBtn').onclick=async()=>{
   }
 
   resetTurnstile();
-  const needsSetup=await needsPasswordSetup(data.user);
-  if(needsSetup){
-    btn.disabled=false;
-    btn.textContent=originalText;
-    showPasswordSetup(data.user);
-    return;
-  }
-
   $('loginMsg').textContent='Login successful. Opening your account…';
-  // Reload once after a successful sign-in so the app always starts from
-  // the freshly persisted Supabase session. This avoids stale auth UI state.
-  window.location.reload();
+
+  // Do not run profile/database queries in the same sign-in flow.
+  // Supabase has already persisted the new session at this point, so reload
+  // immediately and let init() read the session cleanly on the fresh page.
+  // This prevents the login button getting stuck on "Logging in…".
+  window.location.replace(window.location.href);
 };
 $('forgotPasswordBtn').onclick=()=>{
   const box=$('forgotPasswordBox');
@@ -826,6 +821,17 @@ $('changePasswordBtn').onclick=async()=>{
   $('settingsConfirmPassword').value='';
   setSettingsMessage('changePasswordMsg','✓ Password changed successfully. Use the new password the next time you log in.',true);
   toast('Password changed successfully');
+
+  // Keep a very clear confirmation visible in the Settings panel.
+  const msgEl=$('changePasswordMsg');
+  if(msgEl){
+    msgEl.style.fontWeight='700';
+    msgEl.style.padding='10px 12px';
+    msgEl.style.border='1px solid var(--border)';
+    msgEl.style.borderRadius='8px';
+    msgEl.style.background='var(--mint)';
+    msgEl.scrollIntoView({behavior:'smooth',block:'nearest'});
+  }
 };
 
 async function enterApp(user){
@@ -4402,7 +4408,7 @@ ${esc(
 }
 $('loadAuditBtn').onclick = loadAuditHistory;
 
-sb.auth.onAuthStateChange(async(event,session)=>{
+sb.auth.onAuthStateChange((event,session)=>{
   if(event==='PASSWORD_RECOVERY'){
     passwordRecoveryMode=true;
     $('loginView').classList.remove('hidden');
