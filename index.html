@@ -1207,12 +1207,20 @@ function setChargesDisplayMode(mode){
   if($('dailyViewBtn')) $('dailyViewBtn').classList.toggle('active', chargesDisplayMode==='daily');
   if($('calendarViewBtn')) $('calendarViewBtn').classList.toggle('active', chargesDisplayMode==='calendar');
 
-  if(daily) daily.classList.toggle('hidden-desktop', chargesDisplayMode!=='daily');
-  if(tableCard) tableCard.style.display = chargesDisplayMode==='calendar' ? '' : 'none';
-  if(summary) summary.style.display = chargesDisplayMode==='calendar' ? '' : 'none';
-  if(actions) actions.style.display = chargesDisplayMode==='calendar' ? '' : 'none';
+  if(daily){
+    daily.classList.toggle('hidden-desktop', chargesDisplayMode!=='daily');
+    daily.style.display = chargesDisplayMode==='daily' ? 'block' : 'none';
+  }
+  if(tableCard) tableCard.style.display = chargesDisplayMode==='calendar' ? 'block' : 'none';
+  if(summary) summary.style.display = chargesDisplayMode==='calendar' ? 'grid' : 'none';
+  if(actions) actions.style.display = chargesDisplayMode==='calendar' ? 'flex' : 'none';
 
-  if(chargesDisplayMode==='daily') loadDailyEntry();
+  if(chargesDisplayMode==='daily'){
+    loadDailyEntry();
+  } else {
+    renderCalendar();
+    applyBillingCycleStatus();
+  }
 }
 async function loadDailyEntry(){
   const rid = $('dailyResidentSelect')?.value || $('residentSelect')?.value || '';
