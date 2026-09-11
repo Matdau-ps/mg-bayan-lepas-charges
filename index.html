@@ -110,6 +110,50 @@
   .system-footer{margin:22px auto 8px;text-align:center;color:var(--muted);font-size:11px;line-height:1.7}
 .system-footer a{color:var(--green2);text-decoration:none;font-weight:700}
 .system-footer a:hover{text-decoration:underline}
+
+    .mobile-view-toggle{display:flex;gap:8px;margin-bottom:12px}
+    .mobile-daily-card{padding:14px}
+    .daily-top-grid{display:grid;grid-template-columns:1fr 220px;gap:12px;align-items:end}
+    .daily-date-nav{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center}
+    .daily-date-display{font-weight:850;text-align:center;padding:11px;border:1px solid var(--border);border-radius:9px;background:#fff}
+    .daily-today-wrap{text-align:center;margin-top:8px}
+    .daily-summary-bar{position:sticky;bottom:0;z-index:15;margin-top:12px;padding:12px 14px;border-top:1px solid var(--border);background:rgba(255,255,255,.97);display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}
+    .daily-category{margin-top:14px}
+    .daily-category h4{margin:0;padding:10px 12px;background:#edf3f1;border:1px solid var(--border);border-bottom:0;border-radius:10px 10px 0 0;font-size:13px}
+    .daily-item{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:12px;border:1px solid var(--border);border-bottom:0;background:#fff}
+    .daily-item:last-child{border-bottom:1px solid var(--border);border-radius:0 0 10px 10px}
+    .daily-item-info strong{display:block;font-size:14px}
+    .daily-item-info small{display:block;color:var(--muted);margin-top:4px}
+    .daily-stepper{display:grid;grid-template-columns:40px 48px 40px;gap:6px;align-items:center}
+    .daily-stepper button{height:40px;border:1px solid var(--border);border-radius:9px;background:#fff;font-size:20px;font-weight:800;cursor:pointer}
+    .daily-stepper input{width:48px;height:40px;text-align:center;border:1px solid var(--border);border-radius:9px;font-weight:850;background:#fff}
+    .daily-existing{padding:12px 14px;background:var(--mint);border:1px solid var(--border);border-radius:10px;margin-top:12px}
+    .daily-existing strong{display:block;margin-bottom:6px}
+    .daily-existing-list{font-size:12px;color:var(--text);line-height:1.6}
+    @media(max-width:850px){
+      .daily-top-grid{grid-template-columns:1fr}
+    }
+    @media(max-width:700px){
+      #chargesTab .toolbar{grid-template-columns:1fr}
+      #chargesTab .toolbar .tfield:nth-child(2),
+      #chargesTab .toolbar .tfield:nth-child(3),
+      #chargesTab .toolbar #backupDataBtn,
+      #chargesTab .toolbar #cycleLockBtn,
+      #chargesTab .toolbar #reloadBtn{display:none}
+      .mobile-view-toggle{display:flex}
+      #dailyEntryView{display:block}
+      .daily-item{grid-template-columns:1fr auto}
+      .daily-item-info strong{font-size:15px}
+      .daily-stepper{grid-template-columns:42px 50px 42px}
+      .daily-stepper button{height:44px}
+      .daily-stepper input{height:44px}
+      .daily-summary-bar{padding-bottom:calc(12px + env(safe-area-inset-bottom))}
+    }
+    @media(min-width:701px){
+      .mobile-view-toggle{display:flex}
+      #dailyEntryView.hidden-desktop{display:none}
+    }
+
 </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
@@ -220,7 +264,49 @@
 </button>
 
 </div>
+      
       <section id="chargesTab">
+        <div class="mobile-view-toggle">
+          <button id="dailyViewBtn" class="btn tab">Daily Entry</button>
+          <button id="calendarViewBtn" class="btn tab active">Master Calendar</button>
+        </div>
+
+        <div id="dailyEntryView" class="card mobile-daily-card hidden-desktop">
+          <div class="daily-top-grid">
+            <div class="field" style="margin-bottom:0">
+              <label>Resident</label>
+              <select id="dailyResidentSelect"></select>
+            </div>
+
+            <div>
+              <label style="display:block;font-size:12px;font-weight:800;margin-bottom:6px">Charge Date</label>
+              <div class="daily-date-nav">
+                <button id="dailyPrevBtn" class="btn btn-light" style="border:1px solid var(--border)">‹</button>
+                <div id="dailyDateDisplay" class="daily-date-display">-</div>
+                <button id="dailyNextBtn" class="btn btn-light" style="border:1px solid var(--border)">›</button>
+              </div>
+              <div class="daily-today-wrap">
+                <button id="dailyTodayBtn" class="btn btn-light btn-compact" style="border:1px solid var(--border)">Today</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="dailyExisting" class="daily-existing hidden">
+            <strong>Already entered for this date</strong>
+            <div id="dailyExistingList" class="daily-existing-list"></div>
+          </div>
+
+          <div id="dailyEntryList"></div>
+
+          <div class="daily-summary-bar">
+            <div>
+              <strong id="dailyEntryCount">0 entries</strong>
+              <div id="dailySaveStatus" class="note">Select a resident to begin.</div>
+            </div>
+            <strong id="dailyEntryTotal">RM 0.00</strong>
+          </div>
+        </div>
+
         <div class="card toolbar">
           <div class="tfield"><label>Resident</label><select id="residentSelect"></select></div>
 <div class="tfield">
@@ -567,6 +653,9 @@ let currentUser=null,residents=[],items=[],allItems=[],editingItemId=null,entrie
 let currentUserBranchId=null,currentBranchId=null,branches=[];
 let recurringOverrides = [];
 let recurringPriceHistory = [];
+let dailySelectedDate = formatDateISO(new Date());
+let dailyEntries = [];
+let chargesDisplayMode = 'calendar';
 let turnstileWidgetId = null;
 let captchaToken = null;
 let passwordRecoveryMode = false;
@@ -1078,10 +1167,211 @@ async function enterApp(user){
   await recordPendingLoginSuccess(user);
   await loadCurrentUserRole();
   await loadBranchContext();
-  $('userEmail').textContent=user.email;if($('settingsCurrentEmail'))$('settingsCurrentEmail').value=user.email||'';$('loginView').classList.add('hidden');$('appView').classList.remove('hidden');await Promise.all([loadResidents(),loadItems()]);renderSelectors();renderResidentList();renderBranchList();await loadRecurring();renderCalendar();}
+  $('userEmail').textContent=user.email;if($('settingsCurrentEmail'))$('settingsCurrentEmail').value=user.email||'';$('loginView').classList.add('hidden');$('appView').classList.remove('hidden');await Promise.all([loadResidents(),loadItems()]);renderSelectors();renderResidentList();renderBranchList();await loadRecurring();renderCalendar();
+
+  if (window.matchMedia('(max-width: 700px)').matches) {
+    chargesDisplayMode='daily';
+    setChargesDisplayMode('daily');
+  } else {
+    setChargesDisplayMode('calendar');
+  }
+}
 async function loadResidents(){const {data,error}=await sb.from('residents').select('*').eq('active',true).eq('branch_id',currentBranchId).order('name');if(error)throw error;residents=data||[]}
 async function loadItems(){const {data,error}=await sb.from('items').select('*').eq('active',true).eq('branch_id',currentBranchId).order('sort_order').order('name');if(error)throw error;items=data||[]}
 async function loadAllItems(){const {data,error}=await sb.from('items').select('*').eq('branch_id',currentBranchId).order('category').order('name');if(error)return toast(error.message);allItems=data||[];renderItemList()}
+
+function getCurrentBillingBounds(){
+  const month = $('monthPicker')?.value || todayMonth();
+  return getBillingCycle(month);
+}
+function clampDailyDateToCycle(dateStr){
+  const cycle = getCurrentBillingBounds();
+  if(!cycle) return dateStr;
+  if(dateStr < cycle.start) return cycle.start;
+  if(dateStr > cycle.end) return cycle.end;
+  return dateStr;
+}
+function formatDailyDisplayDate(dateStr){
+  if(!dateStr) return '-';
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-MY',{
+    day:'2-digit',month:'short',year:'numeric'
+  });
+}
+function setChargesDisplayMode(mode){
+  chargesDisplayMode = mode === 'daily' ? 'daily' : 'calendar';
+  const daily = $('dailyEntryView');
+  const tableCard = $('chargesTab')?.querySelector('.table-card');
+  const summary = $('chargesTab')?.querySelector('.summary');
+  const actions = $('chargesTab')?.querySelector('.toolbar-actions');
+
+  if($('dailyViewBtn')) $('dailyViewBtn').classList.toggle('active', chargesDisplayMode==='daily');
+  if($('calendarViewBtn')) $('calendarViewBtn').classList.toggle('active', chargesDisplayMode==='calendar');
+
+  if(daily) daily.classList.toggle('hidden-desktop', chargesDisplayMode!=='daily');
+  if(tableCard) tableCard.style.display = chargesDisplayMode==='calendar' ? '' : 'none';
+  if(summary) summary.style.display = chargesDisplayMode==='calendar' ? '' : 'none';
+  if(actions) actions.style.display = chargesDisplayMode==='calendar' ? '' : 'none';
+
+  if(chargesDisplayMode==='daily') loadDailyEntry();
+}
+async function loadDailyEntry(){
+  const rid = $('dailyResidentSelect')?.value || $('residentSelect')?.value || '';
+  dailySelectedDate = clampDailyDateToCycle(dailySelectedDate || formatDateISO(new Date()));
+  if($('dailyDateDisplay')) $('dailyDateDisplay').textContent = formatDailyDisplayDate(dailySelectedDate);
+
+  if(!rid){
+    dailyEntries = [];
+    renderDailyEntry();
+    return;
+  }
+
+  if($('dailySaveStatus')) $('dailySaveStatus').textContent = 'Loading…';
+
+  const {data,error} = await sb
+    .from('charge_entries')
+    .select('*')
+    .eq('resident_id', rid)
+    .eq('charge_date', dailySelectedDate);
+
+  if(error){
+    if($('dailySaveStatus')) $('dailySaveStatus').textContent = error.message;
+    return;
+  }
+
+  dailyEntries = data || [];
+  renderDailyEntry();
+}
+function renderDailyEntry(){
+  const list = $('dailyEntryList');
+  if(!list) return;
+
+  const rid = $('dailyResidentSelect')?.value || '';
+  if(!rid){
+    list.innerHTML = '<p class="note">Select a resident to start entering charges.</p>';
+    if($('dailyExisting')) $('dailyExisting').classList.add('hidden');
+    if($('dailyEntryCount')) $('dailyEntryCount').textContent = '0 entries';
+    if($('dailyEntryTotal')) $('dailyEntryTotal').textContent = money(0);
+    if($('dailySaveStatus')) $('dailySaveStatus').textContent = 'Select a resident to begin.';
+    return;
+  }
+
+  const existingLines = [];
+  let total = 0;
+  let count = 0;
+
+  const html = groupItems().map(([cat, listItems]) => {
+    const rows = listItems.map(it => {
+      const en = dailyEntries.find(e => e.item_id === it.id);
+      const qty = en ? Number(en.quantity) : 0;
+      const amount = qty * Number(en?.unit_price ?? it.price ?? 0);
+      if(qty > 0){
+        count++;
+        total += amount;
+        existingLines.push(`${esc(it.name)} × ${qty}`);
+      }
+      return `
+        <div class="daily-item">
+          <div class="daily-item-info">
+            <strong>${esc(it.name)}</strong>
+            <small>${esc(it.unit || '')}${it.price == null ? '' : ' · ' + money(it.price)}</small>
+          </div>
+          <div class="daily-stepper">
+            <button type="button" onclick="changeDailyQty('${it.id}',-1)">−</button>
+            <input type="number" min="0" step="1" value="${qty || ''}" data-daily-item="${it.id}" onchange="setDailyQtyFromInput(this)">
+            <button type="button" onclick="changeDailyQty('${it.id}',1)">+</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    return `<div class="daily-category"><h4>${esc(cat)}</h4>${rows}</div>`;
+  }).join('');
+
+  list.innerHTML = html || '<p class="note">No active items available.</p>';
+
+  if($('dailyExisting')){
+    $('dailyExisting').classList.toggle('hidden', existingLines.length===0);
+    if($('dailyExistingList')) $('dailyExistingList').innerHTML = existingLines.map(x=>`<div>${x}</div>`).join('');
+  }
+
+  if($('dailyEntryCount')) $('dailyEntryCount').textContent = `${count} ${count===1?'entry':'entries'}`;
+  if($('dailyEntryTotal')) $('dailyEntryTotal').textContent = money(total);
+  if($('dailySaveStatus')) $('dailySaveStatus').textContent = currentCycleLocked ? 'Billing cycle is locked.' : 'All changes save automatically.';
+
+  document.querySelectorAll('[data-daily-item]').forEach(inp => {
+    inp.disabled = currentCycleLocked;
+  });
+  document.querySelectorAll('.daily-stepper button').forEach(btn => {
+    btn.disabled = currentCycleLocked;
+  });
+}
+async function saveDailyQty(itemId, qty){
+  const rid = $('dailyResidentSelect')?.value;
+  if(!rid) return toast('Select a resident first');
+  if(currentCycleLocked) return toast('Billing cycle is locked');
+
+  const item = items.find(i => i.id === itemId);
+  if(!item) return;
+
+  qty = Math.max(0, Number(qty || 0));
+  const existing = dailyEntries.find(e => e.item_id === itemId);
+
+  if($('dailySaveStatus')) $('dailySaveStatus').textContent = 'Saving…';
+
+  let error = null;
+
+  if(qty <= 0 && existing){
+    ({error} = await sb.from('charge_entries').delete().eq('id', existing.id));
+  }else if(qty > 0){
+    const payload = {
+      resident_id: rid,
+      item_id: item.id,
+      charge_date: dailySelectedDate,
+      quantity: qty,
+      unit_price: Number(item.price || 0),
+      updated_by: currentUser.id,
+      branch_id: currentBranchId
+    };
+
+    if(existing){
+      ({error} = await sb.from('charge_entries').update(payload).eq('id', existing.id));
+    }else{
+      const res = await sb.from('charge_entries')
+        .insert({...payload, created_by: currentUser.id})
+        .select()
+        .single();
+      error = res.error;
+    }
+  }
+
+  if(error){
+    if($('dailySaveStatus')) $('dailySaveStatus').textContent = error.message;
+    return toast(error.message);
+  }
+
+  await loadDailyEntry();
+
+  if($('residentSelect')?.value === rid){
+    await loadMonth();
+  }
+
+  if($('dailySaveStatus')) $('dailySaveStatus').textContent = 'Saved';
+}
+window.changeDailyQty = async (itemId, delta) => {
+  const existing = dailyEntries.find(e => e.item_id === itemId);
+  const current = existing ? Number(existing.quantity) : 0;
+  await saveDailyQty(itemId, current + delta);
+};
+window.setDailyQtyFromInput = async input => {
+  await saveDailyQty(input.dataset.dailyItem, Number(input.value || 0));
+};
+function shiftDailyDate(days){
+  const d = new Date(dailySelectedDate + 'T00:00:00');
+  d.setDate(d.getDate() + days);
+  dailySelectedDate = clampDailyDateToCycle(formatDateISO(d));
+  loadDailyEntry();
+}
+
 function renderSelectors() {
 
   const opts =
@@ -1094,6 +1384,16 @@ function renderSelectors() {
       .join('');
 
   $('residentSelect').innerHTML = opts;
+
+  if ($('dailyResidentSelect')) {
+    const currentDaily = $('dailyResidentSelect').value;
+    $('dailyResidentSelect').innerHTML = opts;
+    if (residents.some(r => r.id === currentDaily)) {
+      $('dailyResidentSelect').value = currentDaily;
+    } else if ($('residentSelect').value) {
+      $('dailyResidentSelect').value = $('residentSelect').value;
+    }
+  }
 
   if ($('recResident')) {
     $('recResident').innerHTML = opts;
@@ -1138,9 +1438,31 @@ $('recItem').innerHTML =
   
 $('recResident').onchange = loadRecurring;
 }$('recItem').onchange=()=>{const o=$('recItem').selectedOptions[0];if(o?.dataset.price)$('recAmount').value=Number(o.dataset.price).toFixed(2)};
-$('reloadBtn').onclick=loadMonth;$('residentSelect').onchange=loadMonth;$('monthPicker').onchange = () => {
-  updateBillingPeriodText();
+$('reloadBtn').onclick=loadMonth;
+$('residentSelect').onchange=()=>{
   loadMonth();
+  if($('dailyResidentSelect')) {
+    $('dailyResidentSelect').value = $('residentSelect').value;
+    loadDailyEntry();
+  }
+};
+if($('dailyResidentSelect')) $('dailyResidentSelect').onchange=()=>{
+  if($('residentSelect')) $('residentSelect').value = $('dailyResidentSelect').value;
+  loadDailyEntry();
+};
+if($('dailyPrevBtn')) $('dailyPrevBtn').onclick=()=>shiftDailyDate(-1);
+if($('dailyNextBtn')) $('dailyNextBtn').onclick=()=>shiftDailyDate(1);
+if($('dailyTodayBtn')) $('dailyTodayBtn').onclick=()=>{
+  dailySelectedDate = clampDailyDateToCycle(formatDateISO(new Date()));
+  loadDailyEntry();
+};
+if($('dailyViewBtn')) $('dailyViewBtn').onclick=()=>setChargesDisplayMode('daily');
+if($('calendarViewBtn')) $('calendarViewBtn').onclick=()=>setChargesDisplayMode('calendar');
+$('monthPicker').onchange = () => {
+  updateBillingPeriodText();
+  dailySelectedDate = clampDailyDateToCycle(dailySelectedDate);
+  loadMonth();
+  if(chargesDisplayMode==='daily') loadDailyEntry();
 };
 function updateBillingPeriodText() {
 
@@ -3945,6 +4267,7 @@ function renderBranchSwitcher() {
     await Promise.all([loadResidents(), loadItems()]);
     renderSelectors(); renderResidentList();
     await loadRecurring(); renderCalendar();
+    if(chargesDisplayMode==='daily') await loadDailyEntry();
     toast(`Switched to ${branches.find(b => b.id === currentBranchId)?.name || 'branch'}`);
   };
 }
@@ -4200,6 +4523,13 @@ function applyBillingCycleStatus() {
         currentCycleLocked;
 
     });
+
+  document.querySelectorAll('[data-daily-item]').forEach(input => {
+    input.disabled = currentCycleLocked;
+  });
+  document.querySelectorAll('.daily-stepper button').forEach(button => {
+    button.disabled = currentCycleLocked;
+  });
 }
 $('cycleLockBtn').onclick = async () => {
 
