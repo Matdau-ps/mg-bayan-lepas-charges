@@ -439,15 +439,31 @@
         </div>
       </section>
       <section id="staffTab" class="hidden">
-        <div class="card panel" style="max-width:480px">
-          <h3>Staff</h3>
-          <p class="note">Add a login for someone on your team. They'll use the email/password you set here to sign in.</p>
-          <div class="field"><label>Full Name</label><input id="newStaffName" placeholder="e.g. Aina binti Kassim"></div>
-          <div class="field"><label>Email</label><input id="newStaffEmail" type="email" placeholder="staff@example.com"></div>
-          <div class="field"><label>Temporary Password</label><input id="newStaffPassword" type="text" placeholder="Set a temporary password"></div>
-          <div class="field superadmin-only hidden" id="staffBranchField"><label>Branch</label><select id="newStaffBranch"></select></div>
-          <div class="field superadmin-only hidden" id="staffRoleField"><label>Role</label><select id="newStaffRole"><option value="staff">Staff</option><option value="admin">Branch Admin</option></select></div>
-          <button id="addStaffBtn" class="btn btn-primary">Add Staff</button>
+        <div class="grid2">
+          <div class="card panel">
+            <h3>Add Staff</h3>
+            <p class="note">Add a login for someone on your team. They'll use the email/password you set here to sign in.</p>
+            <div class="field"><label>Full Name</label><input id="newStaffName" placeholder="e.g. Aina binti Kassim"></div>
+            <div class="field"><label>Email</label><input id="newStaffEmail" type="email" placeholder="staff@example.com"></div>
+            <div class="field"><label>Temporary Password</label><input id="newStaffPassword" type="text" placeholder="Set a temporary password"></div>
+            <div class="field superadmin-only hidden" id="staffBranchField"><label>Branch</label><select id="newStaffBranch"></select></div>
+            <div class="field superadmin-only hidden" id="staffRoleField"><label>Role</label><select id="newStaffRole"><option value="staff">Staff</option><option value="admin">Branch Admin</option></select></div>
+            <button id="addStaffBtn" class="btn btn-primary">Add Staff</button>
+          </div>
+
+          <div class="card panel">
+            <div style="display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap">
+              <div>
+                <h3 style="margin-bottom:4px">Existing Staff</h3>
+                <p class="note" style="margin:0">View staff accounts and, as Super Admin, change their branch or role.</p>
+              </div>
+              <button id="refreshStaffBtn" class="btn btn-light btn-compact" style="border:1px solid var(--border)">Refresh</button>
+            </div>
+            <div id="staffListStatus" class="status" style="padding:10px 0 6px"></div>
+            <div id="staffList" class="list">
+              <div class="row"><small>Open the Staff tab to load accounts.</small></div>
+            </div>
+          </div>
         </div>
       </section>
       <section id="auditTab" class="hidden">
@@ -4191,6 +4207,13 @@ document
         loadBackupsList();
       }
 
+      // Staff management behavior
+      if (
+        requestedTab === 'staff'
+      ) {
+        loadStaffList();
+      }
+
       // Settings behavior
       if (requestedTab === 'settings' && currentUser) {
         $('settingsCurrentEmail').value = currentUser.email || '';
@@ -4438,7 +4461,174 @@ if ($('addStaffBtn')) $('addStaffBtn').onclick = async () => {
   $('newStaffEmail').value = '';
   $('newStaffPassword').value = '';
   toast(`Staff account created for ${email}`);
+  await loadStaffList();
 };
+
+let staffProfiles = [];
+
+async function loadStaffList() {
+  const list = $('staffList');
+  const status = $('staffListStatus');
+  if (!list) return;
+
+  list.innerHTML = '<div class="row"><small>Loading staff accounts…</small></div>';
+  if (status) status.textContent = '';
+
+  let query = sb
+    .from('profiles')
+    .select('id,email,full_name,role,branch_id,password_setup_complete')
+    .order('full_name', { ascending: true });
+
+  if (currentUserRole === 'admin' && currentBranchId) {
+    query = query.eq('branch_id', currentBranchId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error('Could not load staff list:', error);
+    list.innerHTML = `<div class="row"><small>${esc(error.message)}</small></div>`;
+    if (status) status.textContent = 'Could not load staff accounts.';
+    return;
+  }
+
+  staffProfiles = data || [];
+
+  if (status) {
+    status.textContent = `${staffProfiles.length} account${staffProfiles.length === 1 ? '' : 's'} loaded.`;
+  }
+
+  if (!staffProfiles.length) {
+    list.innerHTML = '<div class="row"><small>No staff accounts found.</small></div>';
+    return;
+  }
+
+  list.innerHTML = staffProfiles.map(p => {
+    const branchName = branches.find(b => b.id === p.branch_id)?.name || (p.role === 'super_admin' ? 'All branches' : 'Not assigned');
+    const roleLabel =
+      p.role === 'super_admin' ? 'SUPER ADMIN' :
+      p.role === 'admin' ? 'BRANCH ADMIN' :
+      'STAFF';
+
+    const setupBadge = p.password_setup_complete === true
+      ? '<span class="badge">READY</span>'
+      : '<span class="badge" style="background:#fff4d8;color:#8a5a00">SETUP PENDING</span>';
+
+    const canManage = currentUserRole === 'super_admin' && p.id !== currentUser?.id;
+
+    return `
+      <div class="row" style="grid-template-columns:1fr auto">
+        <div>
+          <strong>${esc(p.full_name || p.email || 'Staff')}</strong><br>
+          <small>${esc(p.email || '-')}</small><br>
+          <small>${esc(branchName)} · ${esc(roleLabel)}</small>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+          ${setupBadge}
+          ${canManage ? `
+            <button class="btn btn-light btn-compact" style="border:1px solid var(--border)" onclick="editStaffAccess('${p.id}')">Edit Access</button>
+            <button class="btn btn-light btn-compact" style="border:1px solid var(--border)" onclick="sendStaffPasswordReset('${p.id}')">Reset Password</button>
+          ` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+window.editStaffAccess = async id => {
+  if (currentUserRole !== 'super_admin') {
+    toast('Super admin access required');
+    return;
+  }
+
+  const staff = staffProfiles.find(p => p.id === id);
+  if (!staff) return;
+
+  if (staff.id === currentUser?.id) {
+    toast('Use your own account settings for this account');
+    return;
+  }
+
+  const branchOptions = branches.map((b, i) => `${i + 1}. ${b.name}`).join('\n');
+  const currentBranchIndex = Math.max(0, branches.findIndex(b => b.id === staff.branch_id));
+
+  const branchAnswer = prompt(
+    `Change branch for ${staff.full_name || staff.email}\n\n${branchOptions}\n\nEnter branch number:`,
+    String(currentBranchIndex + 1)
+  );
+
+  if (branchAnswer === null) return;
+
+  const branchIndex = Number(branchAnswer) - 1;
+  const selectedBranch = branches[branchIndex];
+
+  if (!selectedBranch) {
+    toast('Invalid branch selection');
+    return;
+  }
+
+  const roleAnswer = prompt(
+    'Role:\n1. Staff\n2. Branch Admin\n\nEnter 1 or 2:',
+    staff.role === 'admin' ? '2' : '1'
+  );
+
+  if (roleAnswer === null) return;
+
+  const newRole = roleAnswer === '2' ? 'admin' : roleAnswer === '1' ? 'staff' : null;
+
+  if (!newRole) {
+    toast('Invalid role selection');
+    return;
+  }
+
+  const { error } = await sb
+    .from('profiles')
+    .update({
+      branch_id: selectedBranch.id,
+      role: newRole
+    })
+    .eq('id', id);
+
+  if (error) {
+    toast(error.message);
+    return;
+  }
+
+  toast('Staff access updated');
+  await loadStaffList();
+};
+
+window.sendStaffPasswordReset = async id => {
+  if (currentUserRole !== 'super_admin') {
+    toast('Super admin access required');
+    return;
+  }
+
+  const staff = staffProfiles.find(p => p.id === id);
+  if (!staff?.email) {
+    toast('This account has no email address');
+    return;
+  }
+
+  const ok = confirm(`Send a password reset email to ${staff.email}?`);
+  if (!ok) return;
+
+  const { error } = await sb.auth.resetPasswordForEmail(staff.email, {
+    redirectTo: window.location.origin + window.location.pathname
+  });
+
+  if (error) {
+    toast(error.message);
+    return;
+  }
+
+  toast('Password reset email sent');
+};
+
+if ($('refreshStaffBtn')) {
+  $('refreshStaffBtn').onclick = loadStaffList;
+}
+
 function applyRoleAccess() {
 
   const isAdmin =
