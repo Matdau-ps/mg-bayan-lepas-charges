@@ -476,6 +476,13 @@ const SUPABASE_URL = 'https://qppkqopbtaswfwspjxsc.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_VpqWrjBfc0XoawJ8CGYrcw_GdGL4bPy';
 // Cloudflare Turnstile public Site Key only. Never place the Turnstile Secret Key in this file.
 const TURNSTILE_SITE_KEY = 'PASTE_TURNSTILE_SITE_KEY_HERE';
+
+// Keep the original page URL before Supabase processes the auth callback.
+// Password-reset links normally include type=recovery in the URL.
+const INITIAL_PAGE_URL = window.location.href;
+const INITIAL_IS_PASSWORD_RECOVERY =
+  /(?:[?#&])type=recovery(?:&|$)/i.test(INITIAL_PAGE_URL);
+
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const $=id=>document.getElementById(id);
 let currentUser=null,residents=[],items=[],allItems=[],editingItemId=null,entries=[],recurring=[],currentUserRole='staff',currentCycleLocked=false,saveTimer=null;
@@ -615,7 +622,38 @@ function requireCaptcha(messageEl){
 function setSettingsMessage(id,message,ok=false){
   const el=$(id); if(!el)return; el.textContent=message; el.className=ok?'success-note':'error-note';
 }
+function showPasswordRecoveryScreen(){
+  passwordRecoveryMode=true;
+  $('loginView').classList.remove('hidden');
+  $('appView').classList.add('hidden');
+  $('passwordSetupBox').style.display='none';
+
+  const emailField=$('email')?.closest('.field');
+  const passwordField=$('password')?.closest('.field');
+  if(emailField) emailField.style.display='none';
+  if(passwordField) passwordField.style.display='none';
+
+  $('loginBtn').style.display='none';
+  $('forgotPasswordBtn').style.display='none';
+  $('turnstileWrap').style.display='none';
+  $('forgotPasswordBox').classList.add('hidden');
+  $('recoveryBox').classList.remove('hidden');
+  $('loginMsg').textContent='Password recovery verified. Create your new password below.';
+}
+
 async function init(){
+
+  // A password-reset link must stay on the recovery form rather than being
+  // treated as an ordinary signed-in session.
+  if (INITIAL_IS_PASSWORD_RECOVERY) {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session) {
+      showPasswordRecoveryScreen();
+      return;
+    }
+    // If Supabase is still processing the callback, the PASSWORD_RECOVERY
+    // auth event below will display the form as soon as the session is ready.
+  }
 
   renderTurnstile();
   $('monthPicker').value = todayMonth();
@@ -4410,18 +4448,7 @@ $('loadAuditBtn').onclick = loadAuditHistory;
 
 sb.auth.onAuthStateChange((event,session)=>{
   if(event==='PASSWORD_RECOVERY'){
-    passwordRecoveryMode=true;
-    $('loginView').classList.remove('hidden');
-    $('appView').classList.add('hidden');
-    $('passwordSetupBox').style.display='none';
-    $('email').closest('.field').style.display='none';
-    $('password').closest('.field').style.display='none';
-    $('loginBtn').style.display='none';
-    $('forgotPasswordBtn').style.display='none';
-    $('turnstileWrap').style.display='none';
-    $('forgotPasswordBox').classList.add('hidden');
-    $('recoveryBox').classList.remove('hidden');
-    $('loginMsg').textContent='Password recovery verified. Create your new password below.';
+    showPasswordRecoveryScreen();
   }
   if(event==='USER_UPDATED' && session?.user && currentUser){
     currentUser=session.user;
