@@ -29,13 +29,19 @@ main{max-width:620px;margin:auto;padding:12px 12px calc(90px + env(safe-area-ins
 .savebar{position:fixed;left:0;right:0;bottom:0;background:rgba(255,255,255,.97);border-top:1px solid var(--border);padding:10px 12px calc(10px + env(safe-area-inset-bottom));z-index:12}.saveinner{max-width:620px;margin:auto;display:flex;justify-content:space-between;align-items:center;gap:10px}.status{font-size:12px;color:var(--muted)}
 .topbtn{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.45);border-radius:9px;padding:8px 10px;font-weight:800}.captcha{display:flex;justify-content:center;margin:10px 0}
 .install{width:100%;margin-bottom:12px}
+.logo{box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.mobile-nav{display:flex;gap:8px;margin-bottom:12px;position:sticky;top:68px;z-index:8;background:var(--bg);padding:4px 0 6px}
+.mobile-nav .navbtn{flex:1;background:#fff;color:var(--g2);border:1px solid var(--border);border-radius:10px;padding:10px 8px;font-weight:850}
+.mobile-nav .navbtn.active{background:var(--g);color:#fff;border-color:var(--g)}
+.saved-ok{color:var(--g);font-weight:800}
+.settings-card h3{margin:0 0 12px}.account-email{font-weight:800;overflow-wrap:anywhere}
 @media(min-width:700px){body:before{content:"Mobile Staff App";position:fixed;right:12px;bottom:12px;color:#94a3a0;font-size:11px}}
 </style>
 </head>
 <body>
 <section id="loginView">
 <main><div class="card login">
-<div class="logo" style="margin:auto">MG</div><h1>Mintygreen Healthcare</h1><div class="sub">Daily Charges</div>
+<div class="logo" style="margin:auto">MG</div><h1>Mintygreen Healthcare</h1><div class="sub">Mobile Daily Entry</div>
 <div class="field"><label>Email</label><input id="email" type="email" autocomplete="email"></div>
 <div class="field"><label>Password</label><input id="password" type="password" autocomplete="current-password"></div>
 <div id="turnstile" class="captcha"></div>
@@ -45,8 +51,14 @@ main{max-width:620px;margin:auto;padding:12px 12px calc(90px + env(safe-area-ins
 </section>
 
 <section id="appView" class="hidden">
-<header><div class="logo">MG</div><div class="brand">Mintygreen Charges<small id="branchName">Daily Entry</small></div><div class="spacer"></div><button id="logoutBtn" class="topbtn">Log out</button></header>
+<header><div class="logo">MG</div><div class="brand">Mintygreen Charges<small id="branchName">Daily Entry</small></div><div class="spacer"></div></header>
 <main>
+<div class="mobile-nav">
+  <button id="entryNavBtn" class="navbtn active">Daily Entry</button>
+  <button id="settingsNavBtn" class="navbtn">Settings</button>
+  <button id="logoutBtn" class="navbtn">Log out</button>
+</div>
+<div id="dailyScreen">
 <button id="installBtn" class="btn primary install hidden">Install Mintygreen Charges</button>
 <div class="card">
 <div class="field"><label>Resident</label><select id="resident"></select></div>
@@ -55,6 +67,19 @@ main{max-width:620px;margin:auto;padding:12px 12px calc(90px + env(safe-area-ins
 </div>
 <div id="existing" class="summary hidden"><div><span class="note">Already entered</span><div id="existingList"></div></div><strong id="dayTotal">RM 0.00</strong></div>
 <div id="items"></div>
+</div>
+<div id="settingsScreen" class="hidden">
+  <div class="card settings-card">
+    <h3>Account</h3>
+    <div class="note">Signed in as</div>
+    <div id="accountEmail" class="account-email">-</div>
+  </div>
+  <div class="card">
+    <strong>Mintygreen Charges</strong>
+    <p class="note">Mobile Daily Entry · Same Mintygreen billing database</p>
+    <button id="settingsInstallBtn" class="btn primary" style="width:100%">Install App</button>
+  </div>
+</div>
 </main>
 <div class="savebar"><div class="saveinner"><div><strong id="count">0 entries</strong><div id="status" class="status">Select a resident.</div></div><strong id="total">RM 0.00</strong></div></div>
 </section>
@@ -73,12 +98,21 @@ function renderTurnstile(){if(!window.turnstile){setTimeout(renderTurnstile,250)
 function resetCaptcha(){captchaToken=null;if(window.turnstile&&turnstileId!==null)try{window.turnstile.reset(turnstileId)}catch{}}
 $('loginBtn').onclick=async()=>{const btn=$('loginBtn'),email=$('email').value.trim(),password=$('password').value;if(!email||!password)return $('loginMsg').textContent='Enter email and password.';if(!captchaToken)return $('loginMsg').textContent='Complete the security verification.';btn.disabled=true;btn.textContent='Logging in…';const {data,error}=await sb.auth.signInWithPassword({email,password,options:{captchaToken}});if(error){$('loginMsg').textContent=error.message;btn.disabled=false;btn.textContent='Log in';resetCaptcha();return}location.reload()};
 $('logoutBtn').onclick=async()=>{await sb.auth.signOut();location.reload()};
+function showMobileScreen(screen){
+ const daily=screen==='daily';
+ $('dailyScreen').classList.toggle('hidden',!daily);
+ $('settingsScreen').classList.toggle('hidden',daily);
+ $('entryNavBtn').classList.toggle('active',daily);
+ $('settingsNavBtn').classList.toggle('active',!daily);
+}
+$('entryNavBtn').onclick=()=>showMobileScreen('daily');
+$('settingsNavBtn').onclick=()=>showMobileScreen('settings');
 
 async function start(u){
  user=u;
  const {data:p,error:pe}=await sb.from('profiles').select('id,email,role,branch_id').eq('id',u.id).single();
  if(pe||!p?.branch_id){await sb.auth.signOut();$('loginMsg').textContent='This account is not assigned to a branch.';return}
- profile=p;branchId=p.branch_id;
+ profile=p;branchId=p.branch_id;$('accountEmail').textContent=u.email||p.email||'-';
  $('loginView').classList.add('hidden');$('appView').classList.remove('hidden');
  const [{data:r,error:re},{data:i,error:ie},{data:b}] = await Promise.all([
   sb.from('residents').select('*').eq('active',true).eq('branch_id',branchId).order('name'),
@@ -107,7 +141,10 @@ async function save(itemId,qty){
  const it=itemList.find(x=>x.id===itemId);if(!it)return;qty=Math.max(0,Number(qty||0));const e=entries.find(x=>x.item_id===itemId);$('status').textContent='Saving…';let error;
  if(qty<=0&&e)({error}=await sb.from('charge_entries').delete().eq('id',e.id));
  else if(qty>0){const payload={resident_id:rid,item_id:itemId,charge_date:selectedDate,quantity:qty,unit_price:Number(it.price||0),updated_by:user.id,branch_id:branchId};if(e)({error}=await sb.from('charge_entries').update(payload).eq('id',e.id));else({error}=await sb.from('charge_entries').insert({...payload,created_by:user.id}))}
- if(error){$('status').textContent=error.message;return}await loadDay();$('status').textContent='Saved';
+ if(error){$('status').textContent=error.message;return}
+ await loadDay();
+ const savedTime=new Date().toLocaleTimeString('en-MY',{hour:'numeric',minute:'2-digit'});
+ $('status').innerHTML='<span class="saved-ok">✓ Saved · '+savedTime+'</span>';
 }
 window.changeQty=(id,d)=>{const e=entries.find(x=>x.item_id===id);save(id,(e?Number(e.quantity):0)+d)};
 window.inputQty=el=>save(el.dataset.id,el.value);
@@ -116,7 +153,12 @@ function shift(n){const d=new Date(selectedDate+'T00:00:00');d.setDate(d.getDate
 $('prev').onclick=()=>shift(-1);$('next').onclick=()=>shift(1);$('today').onclick=()=>{selectedDate=iso(new Date());loadDay()};
 
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;$('installBtn').classList.remove('hidden')});
-$('installBtn').onclick=async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;$('installBtn').classList.add('hidden')};
+async function promptInstall(){
+ if(!deferredPrompt){alert('If Install App is not offered, use your browser menu. On iPhone: Share → Add to Home Screen.');return}
+ deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;$('installBtn').classList.add('hidden');
+}
+$('installBtn').onclick=promptInstall;
+$('settingsInstallBtn').onclick=promptInstall;
 if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js');
 
 (async()=>{const {data:{session}}=await sb.auth.getSession();if(session)start(session.user);else renderTurnstile()})();
