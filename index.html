@@ -437,9 +437,9 @@
     <h3>Login Activity</h3>
 
     <p class="note">
-      Super Admin security view. Successful website logins are recorded here.
-      Failed authentication attempts remain available in Supabase Auth logs until
-      the secure server-side failed-login logger is added.
+      Super Admin security view. Successful and failed website login attempts
+      are recorded here. Supabase Auth remains the authoritative authentication
+      system; this page stores only safe audit metadata.
     </p>
 
     <div class="card toolbar">
@@ -802,6 +802,28 @@ $('loginBtn').onclick=async()=>{
   const {data,error}=await sb.auth.signInWithPassword(credentials);
   if(error){
     $('loginMsg').textContent=error.message;
+
+    // Best-effort security audit. Authentication failure remains controlled
+    // by Supabase Auth; this call only records safe audit metadata.
+    try {
+      const safeReason = String(error.message || 'Authentication failed')
+        .replace(/captcha[^.]*\.?/gi, 'Authentication verification failed.')
+        .slice(0, 180);
+
+      const { error: auditError } = await sb.functions.invoke('log-failed-login', {
+        body: {
+          email,
+          reason: safeReason
+        }
+      });
+
+      if (auditError) {
+        console.warn('Could not record failed login activity:', auditError);
+      }
+    } catch (auditErr) {
+      console.warn('Could not record failed login activity:', auditErr);
+    }
+
     resetTurnstile();
     btn.disabled=false;
     btn.textContent=originalText;
