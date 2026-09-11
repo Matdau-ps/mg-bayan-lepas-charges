@@ -803,30 +803,33 @@ $('loginBtn').onclick=async()=>{
   if(error){
     $('loginMsg').textContent=error.message;
 
-    // Best-effort security audit. Authentication failure remains controlled
-    // by Supabase Auth; this call only records safe audit metadata.
+    // Restore the login form immediately so the UI never gets stuck waiting
+    // for the audit logger. The audit is best-effort and runs independently.
+    resetTurnstile();
+    btn.disabled=false;
+    btn.textContent=originalText;
+
     try {
       const safeReason = String(error.message || 'Authentication failed')
         .replace(/captcha[^.]*\.?/gi, 'Authentication verification failed.')
         .slice(0, 180);
 
-      const { error: auditError } = await sb.functions.invoke('log-failed-login', {
+      sb.functions.invoke('log-failed-login', {
         body: {
           email,
           reason: safeReason
         }
+      }).then(({ error: auditError }) => {
+        if (auditError) {
+          console.warn('Could not record failed login activity:', auditError);
+        }
+      }).catch(auditErr => {
+        console.warn('Could not record failed login activity:', auditErr);
       });
-
-      if (auditError) {
-        console.warn('Could not record failed login activity:', auditError);
-      }
     } catch (auditErr) {
       console.warn('Could not record failed login activity:', auditErr);
     }
 
-    resetTurnstile();
-    btn.disabled=false;
-    btn.textContent=originalText;
     return;
   }
 
