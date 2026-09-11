@@ -815,17 +815,61 @@ await enterApp(data.user);
 
 $('changeEmailBtn').onclick=async()=>{
   const newEmail=$('settingsNewEmail').value.trim();
+  const btn=$('changeEmailBtn');
   setSettingsMessage('changeEmailMsg','');
-  if(!newEmail){setSettingsMessage('changeEmailMsg','Please enter a new email address.');return}
-  if(currentUser && newEmail.toLowerCase()===(currentUser.email||'').toLowerCase()){setSettingsMessage('changeEmailMsg','This is already your current email address.');return}
-  const {data,error}=await sb.auth.updateUser(
-    {email:newEmail},
-    {emailRedirectTo:'https://minty-green.github.io/Charges/'}
-  );
-  if(error){setSettingsMessage('changeEmailMsg',error.message);return}
+
+  if(!newEmail){
+    setSettingsMessage('changeEmailMsg','Please enter a new email address.');
+    return;
+  }
+
+  if(currentUser && newEmail.toLowerCase()===(currentUser.email||'').toLowerCase()){
+    setSettingsMessage('changeEmailMsg','This is already your current email address.');
+    return;
+  }
+
+  // Email confirmation can invalidate/replace an older browser session.
+  // Verify that this tab still has a live Supabase session before updating.
+  const {data:{session},error:sessionError}=await sb.auth.getSession();
+
+  if(sessionError || !session){
+    setSettingsMessage(
+      'changeEmailMsg',
+      'Your login session has expired after the previous email confirmation. Please log out and sign in again with your current email, then try again.'
+    );
+    return;
+  }
+
+  btn.disabled=true;
+  const originalText=btn.textContent;
+  btn.textContent='Changing…';
+
+  // Use the standard Supabase email update flow.
+  const {data,error}=await sb.auth.updateUser({email:newEmail});
+
+  btn.disabled=false;
+  btn.textContent=originalText;
+
+  if(error){
+    if(/auth session missing/i.test(error.message||'')){
+      setSettingsMessage(
+        'changeEmailMsg',
+        'Your login session is no longer valid. Please log out and sign in again, then retry the email change.'
+      );
+    }else{
+      setSettingsMessage('changeEmailMsg',error.message);
+    }
+    return;
+  }
+
   if(data?.user) currentUser=data.user;
   $('settingsNewEmail').value='';
-  setSettingsMessage('changeEmailMsg','Email change requested. Please follow the confirmation email(s) sent by Supabase before the new address takes effect.',true);
+  setSettingsMessage(
+    'changeEmailMsg',
+    '✓ Email change requested. Complete the confirmation email(s). After confirmation, sign in again using the new email address.',
+    true
+  );
+  toast('Email confirmation sent');
 };
 $('changePasswordBtn').onclick=async()=>{
   const btn=$('changePasswordBtn');
