@@ -166,8 +166,33 @@ $('settingsNavBtn').onclick=()=>showMobileScreen('settings');
 async function start(u){
  user=u;
  const {data:p,error:pe}=await sb.from('profiles').select('id,email,role,branch_id').eq('id',u.id).single();
- if(pe||!p?.branch_id){await sb.auth.signOut();$('loginMsg').textContent='This account is not assigned to a branch.';return}
- profile=p;branchId=p.branch_id;$('accountEmail').textContent=u.email||p.email||'-';
+ if(pe||!p){await sb.auth.signOut();$('loginMsg').textContent='Could not load your account profile.';return}
+
+ profile=p;
+
+ if(p.branch_id){
+   branchId=p.branch_id;
+ }else if(p.role==='super_admin'){
+   const {data:branchRows,error:branchError}=await sb.from('branches').select('id,name').order('name');
+   if(branchError||!branchRows?.length){
+     await sb.auth.signOut();
+     $('loginMsg').textContent='No branch is available for this Super Admin account.';
+     return;
+   }
+
+   const savedBranch=localStorage.getItem('mgbl_active_branch');
+   branchId=branchRows.some(b=>b.id===savedBranch)
+     ? savedBranch
+     : branchRows[0].id;
+
+   localStorage.setItem('mgbl_active_branch',branchId);
+ }else{
+   await sb.auth.signOut();
+   $('loginMsg').textContent='This account is not assigned to a branch.';
+   return;
+ }
+
+ $('accountEmail').textContent=u.email||p.email||'-';
  $('loginView').classList.add('hidden');$('appView').classList.remove('hidden');
  const [{data:r,error:re},{data:i,error:ie},{data:b}] = await Promise.all([
   sb.from('residents').select('*').eq('active',true).eq('branch_id',branchId).order('name'),
@@ -180,7 +205,7 @@ async function start(u){
  renderDate();renderItems();
 }
 function cycleForDate(dateStr){const d=new Date(dateStr+'T00:00:00');const y=d.getFullYear(),m=d.getMonth()+1;let by,bm;if(d.getDate()>=25){by=m===12?y+1:y;bm=m===12?1:m+1}else{by=y;bm=m}const billing=`${by}-${String(bm).padStart(2,'0')}`;let sy=by,sm=bm-1;if(sm===0){sm=12;sy--}return {billing,start:`${sy}-${String(sm).padStart(2,'0')}-25`,end:`${by}-${String(bm).padStart(2,'0')}-24`}}
-async function checkLock(){const c=cycleForDate(selectedDate);const {data}=await sb.from('billing_cycle_locks').select('locked').eq('billing_month',c.billing).eq('branch_id',branchId).maybeSingle();locked=!!data?.locked}
+async function checkLock(){const c=cycleForDate(selectedDate);const {data}=await sb.from('billing_cycles').select('is_locked').eq('billing_month',c.billing).eq('branch_id',branchId).maybeSingle();locked=!!data?.is_locked}
 function renderDate(){$('dateText').textContent=new Date(selectedDate+'T00:00:00').toLocaleDateString('en-MY',{day:'2-digit',month:'short',year:'numeric'})}
 function grouped(){const m=new Map;itemList.forEach(i=>{const c=i.category||'Other';if(!m.has(c))m.set(c,[]);m.get(c).push(i)});return [...m.entries()]}
 async function loadDay(){const rid=$('resident').value;renderDate();if(!rid){entries=[];renderItems();return} $('status').textContent='Loading…';await checkLock();const {data,error}=await sb.from('charge_entries').select('*').eq('resident_id',rid).eq('charge_date',selectedDate);if(error){$('status').textContent=error.message;return}entries=data||[];renderItems()}
@@ -214,7 +239,7 @@ async function promptInstall(){
 }
 $('installBtn').onclick=promptInstall;
 $('settingsInstallBtn').onclick=promptInstall;
-if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js?v=5');
+if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js?v=6');
 
 (async()=>{const {data:{session}}=await sb.auth.getSession();if(session)start(session.user);else renderTurnstile()})();
 </script>
