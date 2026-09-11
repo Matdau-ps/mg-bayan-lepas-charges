@@ -207,6 +207,10 @@
   Audit History
 </button>
 
+<button class="btn tab superadmin-only hidden" data-tab="loginActivity">
+  Login Activity
+</button>
+
 <button class="btn tab admin-only" data-tab="backups">
   Backups
 </button>
@@ -420,6 +424,68 @@
       </table>
 
     </div>
+
+  </div>
+
+</section>
+
+
+<section id="loginActivityTab" class="hidden">
+
+  <div class="card panel">
+
+    <h3>Login Activity</h3>
+
+    <p class="note">
+      Super Admin security view. Successful website logins are recorded here.
+      Failed authentication attempts remain available in Supabase Auth logs until
+      the secure server-side failed-login logger is added.
+    </p>
+
+    <div class="card toolbar">
+      <div class="tfield">
+        <label>Result</label>
+        <select id="loginActivityResult">
+          <option value="">All Results</option>
+          <option value="SUCCESS">Successful</option>
+          <option value="FAILED">Failed</option>
+        </select>
+      </div>
+
+      <div class="tfield">
+        <label>Email contains</label>
+        <input id="loginActivityEmail" type="search" placeholder="Search email">
+      </div>
+
+      <button id="loadLoginActivityBtn" class="btn btn-primary">
+        Load Login Activity
+      </button>
+    </div>
+
+    <div id="loginActivityStatus" class="status"></div>
+
+    <div style="overflow-x:auto; margin-top:16px;">
+      <table id="loginActivityTable">
+        <thead>
+          <tr>
+            <th>Date / Time</th>
+            <th>Email</th>
+            <th>User ID</th>
+            <th>Result</th>
+            <th>Reason</th>
+          </tr>
+        </thead>
+        <tbody id="loginActivityTableBody">
+          <tr>
+            <td colspan="5">Open this tab to load the latest login activity.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="note" style="margin-top:12px">
+      Showing up to the latest 250 records. Passwords and CAPTCHA tokens are never stored.
+    </p>
 
   </div>
 
@@ -745,6 +811,19 @@ $('loginBtn').onclick=async()=>{
   resetTurnstile();
   $('loginMsg').textContent='Login successful. Opening your account…';
 
+  // Record this successful login only after the clean page reload.
+  // This preserves the existing reliable login flow and avoids doing extra
+  // database work inside signInWithPassword itself.
+  try {
+    sessionStorage.setItem('mintygreenPendingLoginSuccess', JSON.stringify({
+      userId: data?.user?.id || '',
+      email: data?.user?.email || email,
+      at: Date.now()
+    }));
+  } catch (e) {
+    console.warn('Could not queue login activity:', e);
+  }
+
   // Do not run profile/database queries in the same sign-in flow.
   // Supabase has already persisted the new session at this point, so reload
   // immediately and let init() read the session cleanly on the fresh page.
@@ -934,8 +1013,44 @@ $('changePasswordBtn').onclick=async()=>{
   }
 };
 
+async function recordPendingLoginSuccess(user){
+  let pending = null;
+
+  try {
+    const raw = sessionStorage.getItem('mintygreenPendingLoginSuccess');
+    if (!raw) return;
+
+    pending = JSON.parse(raw);
+
+    // Clear first so a network/database error cannot create repeated records
+    // on every reload.
+    sessionStorage.removeItem('mintygreenPendingLoginSuccess');
+  } catch (e) {
+    console.warn('Could not read queued login activity:', e);
+    try { sessionStorage.removeItem('mintygreenPendingLoginSuccess'); } catch (_) {}
+    return;
+  }
+
+  if (!pending || pending.userId !== user?.id) return;
+
+  // Ignore stale queued markers (for example, a tab left open overnight).
+  if (pending.at && Date.now() - Number(pending.at) > 10 * 60 * 1000) return;
+
+  const { error } = await sb.from('login_activity').insert({
+    attempted_email: user?.email || pending.email || null,
+    user_id: user.id,
+    result: 'SUCCESS',
+    failure_reason: null
+  });
+
+  if (error) {
+    console.warn('Could not record successful login activity:', error);
+  }
+}
+
 async function enterApp(user){
   currentUser=user;
+  await recordPendingLoginSuccess(user);
   await loadCurrentUserRole();
   await loadBranchContext();
   $('userEmail').textContent=user.email;if($('settingsCurrentEmail'))$('settingsCurrentEmail').value=user.email||'';$('loginView').classList.add('hidden');$('appView').classList.remove('hidden');await Promise.all([loadResidents(),loadItems()]);renderSelectors();renderResidentList();renderBranchList();await loadRecurring();renderCalendar();}
@@ -3627,6 +3742,7 @@ document
           requestedTab === 'staff' ||
           requestedTab === 'branches' ||
           requestedTab === 'audit' ||
+          requestedTab === 'loginActivity' ||
           requestedTab === 'backups'
         )
       ) {
@@ -3635,9 +3751,9 @@ document
         return;
       }
 
-      // Branches tab is super-admin only
+      // Branches and Login Activity are super-admin only
       if (
-        requestedTab === 'branches' &&
+        (requestedTab === 'branches' || requestedTab === 'loginActivity') &&
         currentUserRole !== 'super_admin'
       ) {
         toast('Super admin access required');
@@ -3663,6 +3779,7 @@ document
         'staff',
         'branches',
         'audit',
+        'loginActivity',
         'backups',
         'settings'
       ].forEach(t => {
@@ -3701,6 +3818,13 @@ document
         }
 
         loadAuditHistory();
+      }
+
+      // Login Activity behavior
+      if (
+        requestedTab === 'loginActivity'
+      ) {
+        loadLoginActivity();
       }
 
       // Backups behavior
@@ -4153,6 +4277,79 @@ $('cycleLockBtn').onclick = async () => {
 
   applyBillingCycleStatus();
 };
+
+async function loadLoginActivity() {
+  if (currentUserRole !== 'super_admin') {
+    toast('Super admin access required');
+    return;
+  }
+
+  const body = $('loginActivityTableBody');
+  const status = $('loginActivityStatus');
+
+  if (!body) return;
+
+  body.innerHTML = '<tr><td colspan="5">Loading…</td></tr>';
+  if (status) status.textContent = '';
+
+  let query = sb
+    .from('login_activity')
+    .select('id, attempted_email, user_id, result, failure_reason, created_at')
+    .order('created_at', { ascending: false })
+    .limit(250);
+
+  const resultFilter = $('loginActivityResult')?.value || '';
+  const emailFilter = ($('loginActivityEmail')?.value || '').trim();
+
+  if (resultFilter) {
+    query = query.eq('result', resultFilter);
+  }
+
+  if (emailFilter) {
+    query = query.ilike('attempted_email', `%${emailFilter}%`);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error('Could not load login activity:', error);
+    body.innerHTML = `<tr><td colspan="5">${esc(error.message)}</td></tr>`;
+    if (status) status.textContent = 'Could not load login activity.';
+    return;
+  }
+
+  const rows = data || [];
+
+  if (status) {
+    status.textContent = `${rows.length} record${rows.length === 1 ? '' : 's'} loaded.`;
+  }
+
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="5">No matching login activity found.</td></tr>';
+    return;
+  }
+
+  body.innerHTML = rows.map(row => {
+    const dt = row.created_at
+      ? new Date(row.created_at).toLocaleString()
+      : '-';
+
+    const resultBadge = row.result === 'SUCCESS'
+      ? '<span class="badge" style="background:#dcfce7;color:#166534">SUCCESS</span>'
+      : '<span class="badge" style="background:#fee2e2;color:#991b1b">FAILED</span>';
+
+    return `
+      <tr>
+        <td>${esc(dt)}</td>
+        <td>${esc(row.attempted_email || '-')}</td>
+        <td><small>${esc(row.user_id || '-')}</small></td>
+        <td>${resultBadge}</td>
+        <td>${esc(row.failure_reason || '-')}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
 async function loadAuditHistory() {
 
   if (currentUserRole !== 'admin' && currentUserRole !== 'super_admin') {
@@ -4507,6 +4704,18 @@ ${esc(
     }).join('');
 }
 $('loadAuditBtn').onclick = loadAuditHistory;
+
+if ($('loadLoginActivityBtn')) {
+  $('loadLoginActivityBtn').onclick = loadLoginActivity;
+}
+if ($('loginActivityEmail')) {
+  $('loginActivityEmail').addEventListener('keydown', e => {
+    if (e.key === 'Enter') loadLoginActivity();
+  });
+}
+if ($('loginActivityResult')) {
+  $('loginActivityResult').onchange = loadLoginActivity;
+}
 
 sb.auth.onAuthStateChange((event,session)=>{
   if(event==='PASSWORD_RECOVERY'){
