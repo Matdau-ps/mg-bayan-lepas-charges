@@ -818,7 +818,10 @@ $('changeEmailBtn').onclick=async()=>{
   setSettingsMessage('changeEmailMsg','');
   if(!newEmail){setSettingsMessage('changeEmailMsg','Please enter a new email address.');return}
   if(currentUser && newEmail.toLowerCase()===(currentUser.email||'').toLowerCase()){setSettingsMessage('changeEmailMsg','This is already your current email address.');return}
-  const {data,error}=await sb.auth.updateUser({email:newEmail});
+  const {data,error}=await sb.auth.updateUser(
+    {email:newEmail},
+    {emailRedirectTo:'https://minty-green.github.io/Charges/'}
+  );
   if(error){setSettingsMessage('changeEmailMsg',error.message);return}
   if(data?.user) currentUser=data.user;
   $('settingsNewEmail').value='';
