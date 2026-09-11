@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="MG Charges">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 <style>
 :root{--g:#176b5b;--g2:#0f5548;--mint:#eaf6f3;--bg:#f4f7f6;--text:#20302c;--muted:#6c7a76;--border:#dbe4e1;--red:#b42318}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Segoe UI,Arial,sans-serif}.hidden{display:none!important}
@@ -41,17 +41,17 @@ main{max-width:620px;margin:auto;padding:12px 12px calc(90px + env(safe-area-ins
 <body>
 <section id="loginView">
 <main><div class="card login">
-<div class="logo" style="margin:auto">MG</div><h1>Mintygreen Healthcare</h1><div class="sub">Mobile Daily Entry</div>
+<img src="../logo.png?v=e5a4019a7248" alt="Mintygreen logo" style="height:64px;width:auto;display:block;margin:0 auto 14px"><h1>Mintygreen Healthcare</h1><div class="sub">Mobile Daily Entry</div>
 <div class="field"><label>Email</label><input id="email" type="email" autocomplete="email"></div>
 <div class="field"><label>Password</label><input id="password" type="password" autocomplete="current-password"></div>
-<div class="captcha"><div id="turnstile" class="cf-turnstile" data-sitekey="0x4AAAAAAEv94I2iOlANwtYM" data-theme="light"></div></div>
+<div id="turnstileWrap" class="captcha"><div id="turnstileWidget"></div></div>
 <button id="loginBtn" class="btn primary" style="width:100%">Log in</button>
 <p id="loginMsg" class="note"></p>
 </div></main>
 </section>
 
 <section id="appView" class="hidden">
-<header><div class="logo">MG</div><div class="brand">Mintygreen Charges<small id="branchName">Daily Entry</small></div><div class="spacer"></div></header>
+<header><img src="../logo.png?v=e5a4019a7248" alt="Mintygreen logo" style="height:38px;width:auto;display:block"><div class="brand">Mintygreen Charges<small id="branchName">Daily Entry</small></div><div class="spacer"></div></header>
 <main>
 <div class="mobile-nav">
   <button id="entryNavBtn" class="navbtn active">Daily Entry</button>
@@ -92,19 +92,66 @@ const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 const $=id=>document.getElementById(id), money=n=>'RM '+Number(n||0).toFixed(2);
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
 const iso=d=>{const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`};
-let user=null,profile=null,branchId=null,residents=[],itemList=[],entries=[],selectedDate=iso(new Date()),locked=false,deferredPrompt=null;
+let user=null,profile=null,branchId=null,residents=[],itemList=[],entries=[],selectedDate=iso(new Date()),locked=false,turnstileWidgetId=null,captchaToken=null,deferredPrompt=null;
 
-function getCaptchaToken(){
-  try{
-    return (window.turnstile && typeof window.turnstile.getResponse==='function')
-      ? window.turnstile.getResponse()
-      : '';
-  }catch(e){ return ''; }
+function turnstileConfigured(){return !!TURNSTILE_SITE_KEY && !TURNSTILE_SITE_KEY.includes('PASTE_')}
+function renderTurnstile(){
+  if(!turnstileConfigured()){
+    if($('turnstileWrap')) $('turnstileWrap').innerHTML='<p class="note" style="text-align:center">Security verification is not configured.</p>';
+    return;
+  }
+  if(!window.turnstile){setTimeout(renderTurnstile,250);return;}
+  if(turnstileWidgetId!==null) return;
+  turnstileWidgetId=window.turnstile.render('#turnstileWidget',{
+    sitekey:TURNSTILE_SITE_KEY,
+    callback:(token)=>{captchaToken=token;$('loginMsg').textContent='';},
+    'expired-callback':()=>{captchaToken=null;},
+    'error-callback':()=>{captchaToken=null;}
+  });
 }
-function resetCaptcha(){
-  try{ if(window.turnstile && typeof window.turnstile.reset==='function') window.turnstile.reset(); }catch(e){}
-}catch{}}
-$('loginBtn').onclick=async()=>{const btn=$('loginBtn'),email=$('email').value.trim(),password=$('password').value;const captchaToken=getCaptchaToken();if(!email||!password)return $('loginMsg').textContent='Enter email and password.';if(!captchaToken)return $('loginMsg').textContent='Complete the security verification.';btn.disabled=true;btn.textContent='Logging in…';const {data,error}=await sb.auth.signInWithPassword({email,password,options:{captchaToken}});if(error){$('loginMsg').textContent=error.message;btn.disabled=false;btn.textContent='Log in';resetCaptcha();return}location.reload()};
+function resetTurnstile(){
+  captchaToken=null;
+  if(window.turnstile && turnstileWidgetId!==null){
+    try{window.turnstile.reset(turnstileWidgetId)}catch(e){console.warn('Turnstile reset failed',e)}
+  }
+}
+$('loginBtn').onclick=async()=>{
+  const btn=$('loginBtn');
+  $('loginMsg').textContent='';
+
+  const email=$('email').value.trim();
+  const password=$('password').value;
+
+  if(!email || !password){
+    $('loginMsg').textContent='Please enter your email and password.';
+    return;
+  }
+
+  if(turnstileConfigured() && !captchaToken){
+    $('loginMsg').textContent='Please complete the security verification first.';
+    return;
+  }
+
+  btn.disabled=true;
+  const originalText=btn.textContent;
+  btn.textContent='Logging in…';
+
+  const credentials={email,password};
+  if(turnstileConfigured()) credentials.options={captchaToken};
+
+  const {data,error}=await sb.auth.signInWithPassword(credentials);
+
+  if(error){
+    $('loginMsg').textContent=error.message;
+    resetTurnstile();
+    btn.disabled=false;
+    btn.textContent=originalText;
+    return;
+  }
+
+  resetTurnstile();
+  location.reload();
+};
 $('logoutBtn').onclick=async()=>{await sb.auth.signOut();location.reload()};
 function showMobileScreen(screen){
  const daily=screen==='daily';
@@ -167,9 +214,9 @@ async function promptInstall(){
 }
 $('installBtn').onclick=promptInstall;
 $('settingsInstallBtn').onclick=promptInstall;
-if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js?v=4');
+if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js?v=5');
 
-(async()=>{const {data:{session}}=await sb.auth.getSession();if(session)start(session.user)})();
+(async()=>{const {data:{session}}=await sb.auth.getSession();if(session)start(session.user);else renderTurnstile()})();
 </script>
 </body>
 </html>
