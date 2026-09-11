@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="MG Charges">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad&render=explicit" async defer></script>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <style>
 :root{--g:#176b5b;--g2:#0f5548;--mint:#eaf6f3;--bg:#f4f7f6;--text:#20302c;--muted:#6c7a76;--border:#dbe4e1;--red:#b42318}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Segoe UI,Arial,sans-serif}.hidden{display:none!important}
@@ -44,7 +44,7 @@ main{max-width:620px;margin:auto;padding:12px 12px calc(90px + env(safe-area-ins
 <div class="logo" style="margin:auto">MG</div><h1>Mintygreen Healthcare</h1><div class="sub">Mobile Daily Entry</div>
 <div class="field"><label>Email</label><input id="email" type="email" autocomplete="email"></div>
 <div class="field"><label>Password</label><input id="password" type="password" autocomplete="current-password"></div>
-<div id="turnstile" class="captcha"><span id="captchaLoading" class="captcha-loading">Loading security verification…</span></div>
+<div class="captcha"><div id="turnstile" class="cf-turnstile" data-sitekey="0x4AAAAAAEv94I2iOlANwtYM" data-theme="light"></div></div>
 <button id="loginBtn" class="btn primary" style="width:100%">Log in</button>
 <p id="loginMsg" class="note"></p>
 </div></main>
@@ -92,22 +92,19 @@ const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 const $=id=>document.getElementById(id), money=n=>'RM '+Number(n||0).toFixed(2);
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
 const iso=d=>{const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`};
-let user=null,profile=null,branchId=null,residents=[],itemList=[],entries=[],selectedDate=iso(new Date()),locked=false,turnstileId=null,captchaToken=null,deferredPrompt=null;
+let user=null,profile=null,branchId=null,residents=[],itemList=[],entries=[],selectedDate=iso(new Date()),locked=false,deferredPrompt=null;
 
-window.onTurnstileLoad=function(){renderTurnstile()};
-function renderTurnstile(){
- if(!window.turnstile){setTimeout(renderTurnstile,250);return}
- if(turnstileId!==null)return;
- const loading=$('captchaLoading');if(loading)loading.remove();
- turnstileId=window.turnstile.render('#turnstile',{
-  sitekey:TURNSTILE_SITE_KEY,
-  callback:t=>{captchaToken=t;$('loginMsg').textContent=''},
-  'expired-callback':()=>captchaToken=null,
-  'error-callback':()=>{$('loginMsg').textContent='Security verification could not load. Please refresh the page.';return true}
- });
+function getCaptchaToken(){
+  try{
+    return (window.turnstile && typeof window.turnstile.getResponse==='function')
+      ? window.turnstile.getResponse()
+      : '';
+  }catch(e){ return ''; }
 }
-function resetCaptcha(){captchaToken=null;if(window.turnstile&&turnstileId!==null)try{window.turnstile.reset(turnstileId)}catch{}}
-$('loginBtn').onclick=async()=>{const btn=$('loginBtn'),email=$('email').value.trim(),password=$('password').value;if(!email||!password)return $('loginMsg').textContent='Enter email and password.';if(!captchaToken)return $('loginMsg').textContent='Complete the security verification.';btn.disabled=true;btn.textContent='Logging in…';const {data,error}=await sb.auth.signInWithPassword({email,password,options:{captchaToken}});if(error){$('loginMsg').textContent=error.message;btn.disabled=false;btn.textContent='Log in';resetCaptcha();return}location.reload()};
+function resetCaptcha(){
+  try{ if(window.turnstile && typeof window.turnstile.reset==='function') window.turnstile.reset(); }catch(e){}
+}catch{}}
+$('loginBtn').onclick=async()=>{const btn=$('loginBtn'),email=$('email').value.trim(),password=$('password').value;const captchaToken=getCaptchaToken();if(!email||!password)return $('loginMsg').textContent='Enter email and password.';if(!captchaToken)return $('loginMsg').textContent='Complete the security verification.';btn.disabled=true;btn.textContent='Logging in…';const {data,error}=await sb.auth.signInWithPassword({email,password,options:{captchaToken}});if(error){$('loginMsg').textContent=error.message;btn.disabled=false;btn.textContent='Log in';resetCaptcha();return}location.reload()};
 $('logoutBtn').onclick=async()=>{await sb.auth.signOut();location.reload()};
 function showMobileScreen(screen){
  const daily=screen==='daily';
@@ -170,9 +167,9 @@ async function promptInstall(){
 }
 $('installBtn').onclick=promptInstall;
 $('settingsInstallBtn').onclick=promptInstall;
-if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js?v=3');
+if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js?v=4');
 
-(async()=>{const {data:{session}}=await sb.auth.getSession();if(session)start(session.user);else renderTurnstile()})();
+(async()=>{const {data:{session}}=await sb.auth.getSession();if(session)start(session.user)})();
 </script>
 </body>
 </html>
