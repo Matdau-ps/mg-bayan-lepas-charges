@@ -4477,7 +4477,7 @@ async function loadStaffList() {
   let query = sb
     .from('profiles')
     .select('id,email,role,branch_id,password_setup_complete')
-    .order('full_name', { ascending: true });
+    .order('email', { ascending: true });
 
   if (currentUserRole === 'admin' && currentBranchId) {
     query = query.eq('branch_id', currentBranchId);
