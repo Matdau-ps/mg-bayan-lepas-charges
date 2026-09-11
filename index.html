@@ -4476,7 +4476,7 @@ async function loadStaffList() {
 
   let query = sb
     .from('profiles')
-    .select('id,email,full_name,role,branch_id,password_setup_complete')
+    .select('id,email,role,branch_id,password_setup_complete')
     .order('full_name', { ascending: true });
 
   if (currentUserRole === 'admin' && currentBranchId) {
@@ -4519,7 +4519,7 @@ async function loadStaffList() {
     return `
       <div class="row" style="grid-template-columns:1fr auto">
         <div>
-          <strong>${esc(p.full_name || p.email || 'Staff')}</strong><br>
+          <strong>${esc(p.email || 'Staff')}</strong><br>
           <small>${esc(p.email || '-')}</small><br>
           <small>${esc(branchName)} · ${esc(roleLabel)}</small>
         </div>
@@ -4553,7 +4553,7 @@ window.editStaffAccess = async id => {
   const currentBranchIndex = Math.max(0, branches.findIndex(b => b.id === staff.branch_id));
 
   const branchAnswer = prompt(
-    `Change branch for ${staff.full_name || staff.email}\n\n${branchOptions}\n\nEnter branch number:`,
+    `Change branch for ${staff.email}\n\n${branchOptions}\n\nEnter branch number:`,
     String(currentBranchIndex + 1)
   );
 
