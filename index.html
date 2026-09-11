@@ -13,6 +13,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="MG Bayan Lepas" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
     :root{--green:#176b5b;--green2:#0f5548;--mint:#eaf6f3;--bg:#f4f7f6;--card:#fff;--text:#20302c;--muted:#6c7a76;--border:#dbe4e1;--red:#b42318;--yellow:#8a5b00;--shadow:0 8px 24px rgba(25,70,60,.08)}
@@ -104,6 +105,8 @@
   color: #a12626;
 }
 
+
+    .security-card{padding:18px;margin-bottom:14px}.security-card h3{margin:0 0 5px}.security-card .note{margin-top:0}.settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.settings-grid .card{padding:18px}.captcha-wrap{display:flex;justify-content:center;margin:10px 0 6px;min-height:65px}.link-btn{background:none;border:0;color:var(--green);font-weight:750;cursor:pointer;padding:6px 0;text-decoration:underline;text-underline-offset:2px}.login-actions{text-align:right;margin-top:3px}.success-note{color:var(--green);font-size:12px;line-height:1.5}.error-note{color:var(--red);font-size:12px;line-height:1.5}@media(max-width:850px){.settings-grid{grid-template-columns:1fr}}
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
@@ -131,7 +134,22 @@
     Set Password
   </button>
 </div>
+      <div id="turnstileWrap" class="captcha-wrap">
+        <div id="turnstileWidget"></div>
+      </div>
       <button id="loginBtn" class="btn btn-primary" style="width:100%">Log in</button>
+      <div class="login-actions"><button id="forgotPasswordBtn" type="button" class="link-btn">Forgot password?</button></div>
+      <div id="forgotPasswordBox" class="hidden" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div class="field"><label>Reset Password Email</label><input id="resetEmail" type="email" autocomplete="email" placeholder="Enter your account email"></div>
+        <button id="sendResetBtn" class="btn btn-light" style="width:100%;border:1px solid var(--border)">Send reset link</button>
+        <p id="resetMsg" class="note"></p>
+      </div>
+      <div id="recoveryBox" class="hidden" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+        <div class="field"><label>New Password</label><input id="recoveryPassword" type="password" autocomplete="new-password" placeholder="Enter new password"></div>
+        <div class="field"><label>Confirm New Password</label><input id="recoveryPasswordConfirm" type="password" autocomplete="new-password" placeholder="Re-enter new password"></div>
+        <button id="completeRecoveryBtn" class="btn btn-primary" style="width:100%">Update password</button>
+        <p id="recoveryMsg" class="note"></p>
+      </div>
       <p id="loginMsg" class="note"></p>
     </div>
   </section>
@@ -176,6 +194,10 @@
 
 <button class="btn tab admin-only" data-tab="backups">
   Backups
+</button>
+
+<button class="btn tab" data-tab="settings">
+  Settings
 </button>
 
 </div>
@@ -411,6 +433,29 @@
   </div>
 
 </section>
+
+<section id="settingsTab" class="hidden">
+  <div class="settings-grid">
+    <div class="card security-card">
+      <h3>Account Email</h3>
+      <p class="note">Change the email used to sign in. For security, Supabase may send confirmation links before the change takes effect.</p>
+      <div class="field"><label>Current Email</label><input id="settingsCurrentEmail" type="email" disabled></div>
+      <div class="field"><label>New Email</label><input id="settingsNewEmail" type="email" autocomplete="email" placeholder="newemail@example.com"></div>
+      <button id="changeEmailBtn" class="btn btn-primary">Change Email</button>
+      <p id="changeEmailMsg" class="note"></p>
+    </div>
+
+    <div class="card security-card">
+      <h3>Change Password</h3>
+      <p class="note">Enter your current password before choosing a new one.</p>
+      <div class="field"><label>Current Password</label><input id="settingsCurrentPassword" type="password" autocomplete="current-password"></div>
+      <div class="field"><label>New Password</label><input id="settingsNewPassword" type="password" autocomplete="new-password"></div>
+      <div class="field"><label>Confirm New Password</label><input id="settingsConfirmPassword" type="password" autocomplete="new-password"></div>
+      <button id="changePasswordBtn" class="btn btn-primary">Change Password</button>
+      <p id="changePasswordMsg" class="note"></p>
+    </div>
+  </div>
+</section>
     </main>
   </div>
   <div id="toast" class="toast hidden"></div>
@@ -418,12 +463,17 @@
 <script>
 const SUPABASE_URL = 'https://qppkqopbtaswfwspjxsc.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_VpqWrjBfc0XoawJ8CGYrcw_GdGL4bPy';
+// Cloudflare Turnstile public Site Key only. Never place the Turnstile Secret Key in this file.
+const TURNSTILE_SITE_KEY = 'PASTE_TURNSTILE_SITE_KEY_HERE';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const $=id=>document.getElementById(id);
 let currentUser=null,residents=[],items=[],entries=[],recurring=[],currentUserRole='staff',currentCycleLocked=false,saveTimer=null;
 let currentUserBranchId=null,currentBranchId=null,branches=[];
 let recurringOverrides = [];
 let recurringPriceHistory = [];
+let turnstileWidgetId = null;
+let captchaToken = null;
+let passwordRecoveryMode = false;
 const money=n=>new Intl.NumberFormat('en-MY',{style:'currency',currency:'MYR'}).format(Number(n||0)).replace('MYR','RM');
 const todayMonth = () => {
   const today = new Date();
@@ -522,8 +572,41 @@ if($('themeSelect'))$('themeSelect').onchange=e=>applyTheme(e.target.value);
 const toast=m=>{$('toast').textContent=m;$('toast').classList.remove('hidden');setTimeout(()=>$('toast').classList.add('hidden'),2200)};
 function setStatus(m,type=''){ $('saveStatus').textContent=m;$('saveStatus').className='status '+type; }
 function validateConfig(){return !SUPABASE_URL.includes('PASTE_')&&!SUPABASE_ANON_KEY.includes('PASTE_')}
+function turnstileConfigured(){return !!TURNSTILE_SITE_KEY && !TURNSTILE_SITE_KEY.includes('PASTE_')}
+function renderTurnstile(){
+  if(!turnstileConfigured()){
+    if($('turnstileWrap')) $('turnstileWrap').innerHTML='<p class="note" style="text-align:center">Security verification will appear after the Turnstile Site Key is configured.</p>';
+    return;
+  }
+  if(!window.turnstile){setTimeout(renderTurnstile,250);return;}
+  if(turnstileWidgetId!==null) return;
+  turnstileWidgetId=window.turnstile.render('#turnstileWidget',{
+    sitekey:TURNSTILE_SITE_KEY,
+    callback:(token)=>{captchaToken=token;},
+    'expired-callback':()=>{captchaToken=null;},
+    'error-callback':()=>{captchaToken=null;}
+  });
+}
+function resetTurnstile(){
+  captchaToken=null;
+  if(window.turnstile && turnstileWidgetId!==null){try{window.turnstile.reset(turnstileWidgetId)}catch(e){console.warn('Turnstile reset failed',e)}}
+}
+function getAuthOptionsWithCaptcha(){
+  return turnstileConfigured() ? {captchaToken} : {};
+}
+function requireCaptcha(messageEl){
+  if(turnstileConfigured() && !captchaToken){
+    if(messageEl) messageEl.textContent='Please complete the security verification first.';
+    return false;
+  }
+  return true;
+}
+function setSettingsMessage(id,message,ok=false){
+  const el=$(id); if(!el)return; el.textContent=message; el.className=ok?'success-note':'error-note';
+}
 async function init(){
 
+  renderTurnstile();
   $('monthPicker').value = todayMonth();
 
   if ($('auditMonth')) {
@@ -570,7 +653,50 @@ if (session) {
   }
 }  
  }
-$('loginBtn').onclick=async()=>{ $('loginMsg').textContent=''; const {data,error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value}); if(error){$('loginMsg').textContent=error.message;return} await enterApp(data.user)};
+$('loginBtn').onclick=async()=>{
+  $('loginMsg').textContent='';
+  if(!requireCaptcha($('loginMsg'))) return;
+  const credentials={email:$('email').value.trim(),password:$('password').value};
+  if(turnstileConfigured()) credentials.options={captchaToken};
+  const {data,error}=await sb.auth.signInWithPassword(credentials);
+  if(error){$('loginMsg').textContent=error.message;resetTurnstile();return}
+  resetTurnstile();
+  const needsSetup=await needsPasswordSetup(data.user);
+  if(needsSetup){showPasswordSetup(data.user);return}
+  await enterApp(data.user)
+};
+$('forgotPasswordBtn').onclick=()=>{
+  const box=$('forgotPasswordBox');
+  box.classList.toggle('hidden');
+  $('resetEmail').value=$('email').value.trim();
+  $('resetMsg').textContent='';
+};
+$('sendResetBtn').onclick=async()=>{
+  const email=$('resetEmail').value.trim();
+  $('resetMsg').textContent='';
+  if(!email){$('resetMsg').textContent='Please enter your account email.';return}
+  if(!requireCaptcha($('resetMsg'))) return;
+  const options={redirectTo:window.location.origin+window.location.pathname};
+  if(turnstileConfigured()) options.captchaToken=captchaToken;
+  const {error}=await sb.auth.resetPasswordForEmail(email,options);
+  resetTurnstile();
+  if(error){$('resetMsg').textContent=error.message;return}
+  $('resetMsg').textContent='If this account exists, a password reset link has been sent. Please check your email.';
+};
+$('completeRecoveryBtn').onclick=async()=>{
+  const password=$('recoveryPassword').value;
+  const confirm=$('recoveryPasswordConfirm').value;
+  $('recoveryMsg').textContent='';
+  if(!password || !confirm){$('recoveryMsg').textContent='Please enter and confirm your new password.';return}
+  if(password!==confirm){$('recoveryMsg').textContent='Passwords do not match.';return}
+  if(password.length<8){$('recoveryMsg').textContent='Password must be at least 8 characters.';return}
+  const {error}=await sb.auth.updateUser({password});
+  if(error){$('recoveryMsg').textContent=error.message;return}
+  passwordRecoveryMode=false;
+  $('recoveryMsg').textContent='Password updated successfully. You can now continue.';
+  const {data:{user}}=await sb.auth.getUser();
+  if(user) await enterApp(user);
+};
 $('logoutBtn').onclick=async()=>{await sb.auth.signOut();location.reload()};
 $('setPasswordBtn').onclick = async () => {
   const newPassword = $('newPassword').value;
@@ -613,11 +739,40 @@ $('loginMsg').textContent = 'Password created successfully.';
 await enterApp(data.user);
 };
 
+$('changeEmailBtn').onclick=async()=>{
+  const newEmail=$('settingsNewEmail').value.trim();
+  setSettingsMessage('changeEmailMsg','');
+  if(!newEmail){setSettingsMessage('changeEmailMsg','Please enter a new email address.');return}
+  if(currentUser && newEmail.toLowerCase()===(currentUser.email||'').toLowerCase()){setSettingsMessage('changeEmailMsg','This is already your current email address.');return}
+  const {data,error}=await sb.auth.updateUser({email:newEmail});
+  if(error){setSettingsMessage('changeEmailMsg',error.message);return}
+  if(data?.user) currentUser=data.user;
+  $('settingsNewEmail').value='';
+  setSettingsMessage('changeEmailMsg','Email change requested. Please follow the confirmation email(s) sent by Supabase before the new address takes effect.',true);
+};
+$('changePasswordBtn').onclick=async()=>{
+  const currentPassword=$('settingsCurrentPassword').value;
+  const newPassword=$('settingsNewPassword').value;
+  const confirmPassword=$('settingsConfirmPassword').value;
+  setSettingsMessage('changePasswordMsg','');
+  if(!currentPassword){setSettingsMessage('changePasswordMsg','Please enter your current password.');return}
+  if(!newPassword || !confirmPassword){setSettingsMessage('changePasswordMsg','Please enter and confirm your new password.');return}
+  if(newPassword!==confirmPassword){setSettingsMessage('changePasswordMsg','New passwords do not match.');return}
+  if(newPassword.length<8){setSettingsMessage('changePasswordMsg','New password must be at least 8 characters.');return}
+  if(newPassword===currentPassword){setSettingsMessage('changePasswordMsg','Please choose a new password different from your current password.');return}
+  const {error}=await sb.auth.updateUser({password:newPassword,current_password:currentPassword});
+  if(error){setSettingsMessage('changePasswordMsg',error.message);return}
+  $('settingsCurrentPassword').value='';
+  $('settingsNewPassword').value='';
+  $('settingsConfirmPassword').value='';
+  setSettingsMessage('changePasswordMsg','Password changed successfully.',true);
+};
+
 async function enterApp(user){
   currentUser=user;
   await loadCurrentUserRole();
   await loadBranchContext();
-  $('userEmail').textContent=user.email;$('loginView').classList.add('hidden');$('appView').classList.remove('hidden');await Promise.all([loadResidents(),loadItems()]);renderSelectors();renderResidentList();renderBranchList();await loadRecurring();renderCalendar();}
+  $('userEmail').textContent=user.email;if($('settingsCurrentEmail'))$('settingsCurrentEmail').value=user.email||'';$('loginView').classList.add('hidden');$('appView').classList.remove('hidden');await Promise.all([loadResidents(),loadItems()]);renderSelectors();renderResidentList();renderBranchList();await loadRecurring();renderCalendar();}
 async function loadResidents(){const {data,error}=await sb.from('residents').select('*').eq('active',true).eq('branch_id',currentBranchId).order('name');if(error)throw error;residents=data||[]}
 async function loadItems(){const {data,error}=await sb.from('items').select('*').eq('active',true).eq('branch_id',currentBranchId).order('sort_order').order('name');if(error)throw error;items=data||[]}
 function renderSelectors() {
@@ -3333,7 +3488,8 @@ document
         'staff',
         'branches',
         'audit',
-        'backups'
+        'backups',
+        'settings'
       ].forEach(t => {
 
         const section =
@@ -3377,6 +3533,13 @@ document
         requestedTab === 'backups'
       ) {
         loadBackupsList();
+      }
+
+      if (requestedTab === 'settings' && currentUser) {
+        $('settingsCurrentEmail').value=currentUser.email||'';
+        $('settingsNewEmail').value='';
+        $('changeEmailMsg').textContent='';
+        $('changePasswordMsg').textContent='';
       }
 
     };
@@ -4163,6 +4326,28 @@ ${esc(
     }).join('');
 }
 $('loadAuditBtn').onclick = loadAuditHistory;
+
+sb.auth.onAuthStateChange(async(event,session)=>{
+  if(event==='PASSWORD_RECOVERY'){
+    passwordRecoveryMode=true;
+    $('loginView').classList.remove('hidden');
+    $('appView').classList.add('hidden');
+    $('passwordSetupBox').style.display='none';
+    $('email').closest('.field').style.display='none';
+    $('password').closest('.field').style.display='none';
+    $('loginBtn').style.display='none';
+    $('forgotPasswordBtn').style.display='none';
+    $('turnstileWrap').style.display='none';
+    $('forgotPasswordBox').classList.add('hidden');
+    $('recoveryBox').classList.remove('hidden');
+    $('loginMsg').textContent='Password recovery verified. Create your new password below.';
+  }
+  if(event==='USER_UPDATED' && session?.user && currentUser){
+    currentUser=session.user;
+    if($('userEmail')) $('userEmail').textContent=currentUser.email||'';
+    if($('settingsCurrentEmail')) $('settingsCurrentEmail').value=currentUser.email||'';
+  }
+});
 
 init();
 
