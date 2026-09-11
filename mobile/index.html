@@ -201,21 +201,19 @@ function renderMobileBranchSelector(){
 async function switchMobileBranch(newBranchId){
   if(profile?.role!=='super_admin') return;
   if(!branchList.some(b=>b.id===newBranchId)) return;
+  if(newBranchId===branchId) return;
 
   branchId=newBranchId;
   localStorage.setItem('mgbl_active_branch',branchId);
 
-  if($('residentSelect')) $('residentSelect').innerHTML='<option value="">Loading residents…</option>';
-  if($('entryList')) $('entryList').innerHTML='';
-
-  await Promise.all([loadResidents(),loadItems()]);
-  renderResidentOptions();
-
-  selectedDate=clampDate(selectedDate);
-  await loadDay();
+  const select=$('mobileBranchSelect');
+  if(select) select.disabled=true;
 
   const branch=branchList.find(b=>b.id===branchId);
-  if($('saveStatus')) $('saveStatus').textContent=branch?`Switched to ${branch.name}`:'Branch switched';
+  if($('saveStatus')) $('saveStatus').textContent=branch?`Switching to ${branch.name}…`:'Switching branch…';
+
+  // Reload automatically so all branch-specific data and UI state refresh together.
+  window.location.reload();
 }
 
 async function start(u){
@@ -295,7 +293,7 @@ async function promptInstall(){
 }
 $('installBtn').onclick=promptInstall;
 $('settingsInstallBtn').onclick=promptInstall;
-if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js?v=8');
+if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js?v=9');
 
 (async()=>{const {data:{session}}=await sb.auth.getSession();if(session)start(session.user);else renderTurnstile()})();
 </script>
