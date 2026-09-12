@@ -177,6 +177,22 @@
       font-size:15px;
       line-height:1;
     }
+    .recurring-date-cell .subscription-start-badge{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      min-width:20px;
+      height:20px;
+      padding:0 4px;
+      border-radius:5px;
+      background:#ffffff;
+      border:1px solid #8b989d;
+      color:#4d5b60;
+      font-size:11px;
+      font-weight:900;
+      line-height:1;
+      margin-right:3px;
+    }
     .recurring-total{
       background:#f4f8f7;
       font-weight:800;
@@ -1599,6 +1615,7 @@ setStatus(
 function renderCalendar() {
   const month = $('monthPicker').value || todayMonth();
   const billingDates = getBillingDates(month);
+  const cycle = getBillingCycle(month);
   const rid = $('residentSelect').value;
 
   let h = `
@@ -1668,17 +1685,48 @@ function renderCalendar() {
         const date = d.date;
 
         if (isRecurringCategory) {
-          const startsToday = itemRecurringCharges.some(
+          // "S" = the actual subscription commencement date.
+          const subscriptionStartsToday = itemRecurringCharges.some(
             r => r.start_date === date
           );
+
+          // "✓" = first date this recurring charge is applicable
+          // inside the currently displayed 25 -> 24 billing cycle.
+          const activeFromToday = itemRecurringCharges.some(r => {
+            if (!cycle) return false;
+            const effectiveStart =
+              r.start_date > cycle.start
+                ? r.start_date
+                : cycle.start;
+
+            return effectiveStart === date;
+          });
+
+          const markers = [
+            subscriptionStartsToday
+              ? '<span class="subscription-start-badge">S</span>'
+              : '',
+            activeFromToday
+              ? '<span class="recurring-start-tick">✓</span>'
+              : ''
+          ].join('');
+
+          let markerTitle = 'Managed in Monthly Packages';
+          if (subscriptionStartsToday && activeFromToday) {
+            markerTitle = `Subscription started and became active in this billing cycle on ${date}`;
+          } else if (subscriptionStartsToday) {
+            markerTitle = `Actual subscription start date: ${date}`;
+          } else if (activeFromToday) {
+            markerTitle = `Active from this billing-cycle date: ${date}`;
+          }
 
           h += `
             <td
               class="recurring-date-cell"
-              title="${startsToday ? `Recurring charge started ${date}` : 'Managed in Monthly Packages'}"
-              aria-label="${esc(it.name)} ${date} read only${startsToday ? ', recurring charge starts today' : ''}"
+              title="${markerTitle}"
+              aria-label="${esc(it.name)} ${date} read only${subscriptionStartsToday ? ', subscription starts today' : ''}${activeFromToday ? ', active from today in this billing cycle' : ''}"
             >
-              ${startsToday ? '<span class="recurring-start-tick">✓</span>' : ''}
+              ${markers}
             </td>
           `;
           continue;
@@ -1730,8 +1778,6 @@ function renderCalendar() {
   h += '</tbody>';
 
   $('calendarTable').innerHTML = h;
-
-  const cycle = getBillingCycle(month);
 
   if (rid && cycle) {
 
