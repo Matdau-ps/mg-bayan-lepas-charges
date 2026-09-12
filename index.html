@@ -2119,6 +2119,24 @@ function getRecurringProrateTooltip(recurringCharge, billingMonth) {
   return `${money(details.normalAmount)} ÷ ${details.cycleDays} days × ${details.activeDays} active days = ${money(details.amount)} (daily rate ${money(dailyRate)})`;
 }
 
+function getRecurringFinanceNote(recurringCharge, billingMonth) {
+  const details =
+    getRecurringBillingDetails(
+      recurringCharge,
+      billingMonth
+    );
+
+  if (details.hasSpecialOverride) {
+    return `Special Month: ${money(details.amount)}`;
+  }
+
+  if (!details.isProrated) {
+    return '';
+  }
+
+  return `Prorated: ${money(details.normalAmount)} ÷ ${details.cycleDays} × ${details.activeDays} days`;
+}
+
 function renderMonthlyRecurringDisplay() {
   const display = $('monthlyRecurringDisplay');
 
@@ -3566,7 +3584,7 @@ for (const r of recurring) {
     ) || 0;
 
   const recurringNote =
-    getRecurringChargeNote(r, month);
+    getRecurringFinanceNote(r, month);
 
   recurringTotal += amount;
 
@@ -4136,7 +4154,7 @@ function renderFinancePdfPage(doc, resident, month, cycle, periodText, entriesFo
       ) || 0;
 
     const recurringNote =
-      getRecurringChargeNote(r, month);
+      getRecurringFinanceNote(r, month);
 
     recurringTotal += amount;
 
