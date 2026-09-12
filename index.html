@@ -156,6 +156,32 @@
       #dailyEntryView.hidden-desktop{display:none}
     }
 
+
+    .recurring-date-cell{
+      background:#eef1f2;
+      text-align:center;
+      color:#7b878d;
+      font-weight:800;
+      cursor:not-allowed;
+      user-select:none;
+    }
+    .recurring-date-cell .recurring-start-tick{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      width:22px;
+      height:22px;
+      border-radius:50%;
+      background:#dce9e5;
+      color:#176b57;
+      font-size:15px;
+      line-height:1;
+    }
+    .recurring-total{
+      background:#f4f8f7;
+      font-weight:800;
+    }
+
 </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
@@ -1606,9 +1632,27 @@ function renderCalendar() {
       </tr>
     `;
 
+    const isRecurringCategory =
+      cat === 'Machine Rental' ||
+      cat === 'Package' ||
+      cat === 'Service';
+
     for (const it of list) {
 
       let rowTotal = 0;
+
+      // Monthly Package / Machine Rental / Service rows are controlled only from
+      // the Monthly Packages tab. Their calendar dates are read-only.
+      const itemRecurringCharges = isRecurringCategory
+        ? recurring.filter(r => r.item_id === it.id)
+        : [];
+
+      if (isRecurringCategory) {
+        rowTotal = itemRecurringCharges.reduce(
+          (sum, r) => sum + getRecurringAmountForMonth(r, month),
+          0
+        );
+      }
 
       h += `
         <tr>
@@ -1622,6 +1666,23 @@ function renderCalendar() {
       for (const d of billingDates) {
 
         const date = d.date;
+
+        if (isRecurringCategory) {
+          const startsToday = itemRecurringCharges.some(
+            r => r.start_date === date
+          );
+
+          h += `
+            <td
+              class="recurring-date-cell"
+              title="${startsToday ? `Recurring charge started ${date}` : 'Managed in Monthly Packages'}"
+              aria-label="${esc(it.name)} ${date} read only${startsToday ? ', recurring charge starts today' : ''}"
+            >
+              ${startsToday ? '<span class="recurring-start-tick">✓</span>' : ''}
+            </td>
+          `;
+          continue;
+        }
 
         const en = entries.find(
           x =>
@@ -1658,7 +1719,7 @@ function renderCalendar() {
       }
 
       h += `
-          <td class="total-col">
+          <td class="total-col ${isRecurringCategory ? 'recurring-total' : ''}">
             ${money(rowTotal)}
           </td>
         </tr>
@@ -1695,7 +1756,7 @@ function renderCalendar() {
     );
 
   renderMonthlyRecurringDisplay();
-    updateSummary();
+  updateSummary();
 }async function saveQty(ev){const input=ev.target,rid=$('residentSelect').value;if(!rid)return;if(!currentBranchId){setStatus('No active branch selected — reselect a branch and retry','err');return}const qty=Number(input.value||0),item=items.find(i=>i.id===input.dataset.item);if(!item)return;setStatus('Saving…');let error;if(qty<=0&&input.dataset.entry){({error}=await sb.from('charge_entries').delete().eq('id',input.dataset.entry))}else if(qty>0){const payload={resident_id:rid,item_id:item.id,charge_date:input.dataset.date,quantity:qty,unit_price:Number(item.price||0),updated_by:currentUser.id,branch_id:currentBranchId};if(input.dataset.entry)({error}=await sb.from('charge_entries').update(payload).eq('id',input.dataset.entry));else {const res=await sb.from('charge_entries').insert({...payload,created_by:currentUser.id}).select().single();error=res.error;if(res.data)input.dataset.entry=res.data.id}}if(error){setStatus(error.message,'err');return}input.classList.toggle('nonzero',qty>0);await loadMonth();setStatus('Saved','ok')}
 function getRecurringAmountForMonth(recurringCharge, billingMonth) {
   const originalAmount =
