@@ -193,6 +193,21 @@
       line-height:1;
       margin-right:3px;
     }
+    .recurring-date-cell .subscription-stop-badge{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      width:20px;
+      height:20px;
+      border-radius:5px;
+      background:#ffffff;
+      border:1px solid #8b989d;
+      color:#4d5b60;
+      font-size:12px;
+      font-weight:900;
+      line-height:1;
+      margin-left:3px;
+    }
     .recurring-total{
       background:#f4f8f7;
       font-weight:800;
@@ -1702,29 +1717,35 @@ function renderCalendar() {
             return effectiveStart === date;
           });
 
+          // "■" = actual recurring subscription stop/end date.
+          const subscriptionStopsToday = itemRecurringCharges.some(
+            r => r.end_date && r.end_date === date
+          );
+
           const markers = [
             subscriptionStartsToday
               ? '<span class="subscription-start-badge">S</span>'
               : '',
             activeFromToday
               ? '<span class="recurring-start-tick">✓</span>'
+              : '',
+            subscriptionStopsToday
+              ? '<span class="subscription-stop-badge">■</span>'
               : ''
           ].join('');
 
           let markerTitle = 'Managed in Monthly Packages';
-          if (subscriptionStartsToday && activeFromToday) {
-            markerTitle = `Subscription started and became active in this billing cycle on ${date}`;
-          } else if (subscriptionStartsToday) {
-            markerTitle = `Actual subscription start date: ${date}`;
-          } else if (activeFromToday) {
-            markerTitle = `Active from this billing-cycle date: ${date}`;
-          }
+          const markerDescriptions = [];
+          if (subscriptionStartsToday) markerDescriptions.push(`Actual subscription start date: ${date}`);
+          if (activeFromToday) markerDescriptions.push(`Active from this billing-cycle date: ${date}`);
+          if (subscriptionStopsToday) markerDescriptions.push(`Subscription stop/end date: ${date}`);
+          if (markerDescriptions.length) markerTitle = markerDescriptions.join(' · ');
 
           h += `
             <td
               class="recurring-date-cell"
               title="${markerTitle}"
-              aria-label="${esc(it.name)} ${date} read only${subscriptionStartsToday ? ', subscription starts today' : ''}${activeFromToday ? ', active from today in this billing cycle' : ''}"
+              aria-label="${esc(it.name)} ${date} read only${subscriptionStartsToday ? ', subscription starts today' : ''}${activeFromToday ? ', active from today in this billing cycle' : ''}${subscriptionStopsToday ? ', subscription stops today' : ''}"
             >
               ${markers}
             </td>
