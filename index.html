@@ -212,6 +212,15 @@
       background:#f4f8f7;
       font-weight:800;
     }
+    .recurring-prorate-note{
+      display:block;
+      margin-top:2px;
+      font-size:10px;
+      line-height:1.15;
+      font-weight:700;
+      color:#6f7f7a;
+      white-space:nowrap;
+    }
 
 </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -1679,11 +1688,31 @@ function renderCalendar() {
         ? recurring.filter(r => r.item_id === it.id)
         : [];
 
+      let recurringProrateNote = '';
+
       if (isRecurringCategory) {
-        rowTotal = itemRecurringCharges.reduce(
-          (sum, r) => sum + getRecurringAmountForMonth(r, month),
+        const recurringDetails =
+          itemRecurringCharges.map(r =>
+            getRecurringBillingDetails(r, month)
+          );
+
+        rowTotal = recurringDetails.reduce(
+          (sum, detail) =>
+            sum + Number(detail.amount || 0),
           0
         );
+
+        const partialDetails =
+          recurringDetails.filter(
+            detail => detail.isProrated
+          );
+
+        if (partialDetails.length === 1) {
+          recurringProrateNote =
+            `${partialDetails[0].activeDays} / ${partialDetails[0].cycleDays} days`;
+        } else if (partialDetails.length > 1) {
+          recurringProrateNote = 'Prorated';
+        }
       }
 
       h += `
@@ -1790,6 +1819,11 @@ function renderCalendar() {
       h += `
           <td class="total-col ${isRecurringCategory ? 'recurring-total' : ''}">
             ${money(rowTotal)}
+            ${
+              recurringProrateNote
+                ? `<span class="recurring-prorate-note">${recurringProrateNote}</span>`
+                : ''
+            }
           </td>
         </tr>
       `;
@@ -1825,12 +1859,47 @@ function renderCalendar() {
   renderMonthlyRecurringDisplay();
   updateSummary();
 }async function saveQty(ev){const input=ev.target,rid=$('residentSelect').value;if(!rid)return;if(!currentBranchId){setStatus('No active branch selected — reselect a branch and retry','err');return}const qty=Number(input.value||0),item=items.find(i=>i.id===input.dataset.item);if(!item)return;setStatus('Saving…');let error;if(qty<=0&&input.dataset.entry){({error}=await sb.from('charge_entries').delete().eq('id',input.dataset.entry))}else if(qty>0){const payload={resident_id:rid,item_id:item.id,charge_date:input.dataset.date,quantity:qty,unit_price:Number(item.price||0),updated_by:currentUser.id,branch_id:currentBranchId};if(input.dataset.entry)({error}=await sb.from('charge_entries').update(payload).eq('id',input.dataset.entry));else {const res=await sb.from('charge_entries').insert({...payload,created_by:currentUser.id}).select().single();error=res.error;if(res.data)input.dataset.entry=res.data.id}}if(error){setStatus(error.message,'err');return}input.classList.toggle('nonzero',qty>0);await loadMonth();setStatus('Saved','ok')}
-function getRecurringAmountForMonth(recurringCharge, billingMonth) {
+function daysInclusive(startDate, endDate) {
+  const start = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T00:00:00Z`);
+
+  if (
+    Number.isNaN(start.getTime()) ||
+    Number.isNaN(end.getTime()) ||
+    end < start
+  ) {
+    return 0;
+  }
+
+  return (
+    Math.floor(
+      (end.getTime() - start.getTime()) /
+      86400000
+    ) + 1
+  );
+}
+
+function getRecurringBillingDetails(recurringCharge, billingMonth) {
+  const cycle = getBillingCycle(billingMonth);
+
+  if (!cycle) {
+    return {
+      amount: 0,
+      normalAmount: 0,
+      isProrated: false,
+      activeDays: 0,
+      cycleDays: 0,
+      effectiveStart: null,
+      effectiveEnd: null,
+      hasSpecialOverride: false
+    };
+  }
+
   const originalAmount =
     Number(recurringCharge.amount) || 0;
 
-  // 1. Find permanent price changes effective
-  //    on or before this billing month
+  // 1. Find the normal monthly price, including any
+  // permanent price change effective for this billing month.
   const permanentPrices = recurringPriceHistory
     .filter(
       p =>
@@ -1850,19 +1919,99 @@ function getRecurringAmountForMonth(recurringCharge, billingMonth) {
       Number(permanentPrices[0].amount) || 0;
   }
 
-  // 2. Special month takes highest priority
+  // 2. Special Month is always the highest-priority amount.
+  // It is intentionally NOT prorated.
   const specialPrice = recurringOverrides.find(
     o =>
       o.recurring_charge_id === recurringCharge.id &&
       o.billing_month === billingMonth
   );
 
+  const cycleStart = cycle.start;
+  const cycleEnd = cycle.end;
+
+  const effectiveStart =
+    recurringCharge.start_date > cycleStart
+      ? recurringCharge.start_date
+      : cycleStart;
+
+  const effectiveEnd =
+    recurringCharge.end_date &&
+    recurringCharge.end_date < cycleEnd
+      ? recurringCharge.end_date
+      : cycleEnd;
+
+  const cycleDays =
+    daysInclusive(cycleStart, cycleEnd);
+
+  const activeDays =
+    effectiveStart <= effectiveEnd
+      ? daysInclusive(effectiveStart, effectiveEnd)
+      : 0;
+
+  const isPartialCycle =
+    activeDays > 0 &&
+    activeDays < cycleDays;
+
   if (specialPrice) {
-    return Number(specialPrice.special_amount) || 0;
+    return {
+      amount:
+        Number(specialPrice.special_amount) || 0,
+      normalAmount,
+      isProrated: false,
+      activeDays,
+      cycleDays,
+      effectiveStart,
+      effectiveEnd,
+      hasSpecialOverride: true
+    };
   }
 
-  // 3. Otherwise use permanent/current normal amount
-  return normalAmount;
+  // 3. Full billing cycle = full package price,
+  // regardless of whether that cycle has 28, 29, 30 or 31 days.
+  if (!isPartialCycle) {
+    return {
+      amount:
+        activeDays > 0
+          ? normalAmount
+          : 0,
+      normalAmount,
+      isProrated: false,
+      activeDays,
+      cycleDays,
+      effectiveStart,
+      effectiveEnd,
+      hasSpecialOverride: false
+    };
+  }
+
+  // 4. Partial billing cycle = monthly price / cycle days
+  // × active days. Start and end dates are both chargeable.
+  const proratedAmount =
+    cycleDays > 0
+      ? normalAmount / cycleDays * activeDays
+      : 0;
+
+  return {
+    amount:
+      Math.round(
+        (proratedAmount + Number.EPSILON) * 100
+      ) / 100,
+    normalAmount,
+    isProrated: true,
+    activeDays,
+    cycleDays,
+    effectiveStart,
+    effectiveEnd,
+    hasSpecialOverride: false
+  };
+}
+
+function getRecurringAmountForMonth(recurringCharge, billingMonth) {
+  return getRecurringBillingDetails(
+    recurringCharge,
+    billingMonth
+  ).amount;
 }
 
 function renderMonthlyRecurringDisplay() {
@@ -1899,13 +2048,14 @@ function renderMonthlyRecurringDisplay() {
   const rows = recurring
     .map(r => {
 
+      const details =
+        getRecurringBillingDetails(
+          r,
+          billingMonth
+        );
+
       const amount =
-        Number(
-          getRecurringAmountForMonth(
-            r,
-            billingMonth
-          )
-        ) || 0;
+        Number(details.amount) || 0;
 
       recurringTotal += amount;
 
@@ -1916,6 +2066,13 @@ function renderMonthlyRecurringDisplay() {
           <td>${monthText}</td>
           <td class="total-col">
             ${money(amount)}
+            ${
+              details.isProrated
+                ? `<span class="recurring-prorate-note">${details.activeDays} / ${details.cycleDays} days</span>`
+                : details.hasSpecialOverride
+                  ? '<span class="recurring-prorate-note">Special Month</span>'
+                  : ''
+            }
           </td>
         </tr>
       `;
