@@ -221,6 +221,54 @@
       color:#6f7f7a;
       white-space:nowrap;
     }
+    .recurring-legend{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px 14px;
+      align-items:center;
+      margin:8px 0 10px;
+      padding:8px 10px;
+      border:1px solid #dce5e2;
+      border-radius:8px;
+      background:#f8fbfa;
+      color:#53635e;
+      font-size:11px;
+      font-weight:700;
+    }
+    .recurring-legend-item{
+      display:inline-flex;
+      align-items:center;
+      gap:5px;
+      white-space:nowrap;
+    }
+    .recurring-legend-symbol{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      min-width:20px;
+      height:20px;
+      padding:0 4px;
+      border-radius:5px;
+      background:#fff;
+      border:1px solid #8b989d;
+      color:#4d5b60;
+      font-size:11px;
+      font-weight:900;
+      line-height:1;
+    }
+    .recurring-legend-symbol.tick{
+      border-radius:50%;
+      background:#dce9e5;
+      border-color:#dce9e5;
+      color:#176b57;
+      font-size:14px;
+    }
+    .recurring-legend-symbol.grey{
+      width:24px;
+      min-width:24px;
+      background:#eef1f2;
+      border-color:#d7dfe1;
+    }
 
 </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -441,6 +489,12 @@
         </div>
         <div class="card table-card">
           <div class="table-head"><h2 id="calendarTitle">Calendar Charges</h2><small>Enter quantity under the date used. Changes save automatically.</small></div>
+          <div class="recurring-legend" aria-label="Recurring package calendar legend">
+            <span class="recurring-legend-item"><span class="recurring-legend-symbol">S</span> Subscription Start</span>
+            <span class="recurring-legend-item"><span class="recurring-legend-symbol tick">✓</span> Active From</span>
+            <span class="recurring-legend-item"><span class="recurring-legend-symbol">■</span> Subscription End</span>
+            <span class="recurring-legend-item"><span class="recurring-legend-symbol grey"></span> Monthly Package / Service (read only)</span>
+          </div>
           <div class="scroll"><table id="calendarTable" class="calendar"></table></div>
 
           <div id="monthlyRecurringDisplay"></div>
@@ -1689,6 +1743,7 @@ function renderCalendar() {
         : [];
 
       let recurringProrateNote = '';
+      let recurringTotalTooltip = '';
 
       if (isRecurringCategory) {
         const recurringDetails =
@@ -1713,6 +1768,12 @@ function renderCalendar() {
         } else if (partialDetails.length > 1) {
           recurringProrateNote = 'Prorated';
         }
+
+        recurringTotalTooltip =
+          itemRecurringCharges
+            .map(r => getRecurringProrateTooltip(r, month))
+            .filter(Boolean)
+            .join(' · ');
       }
 
       h += `
@@ -1817,7 +1878,10 @@ function renderCalendar() {
       }
 
       h += `
-          <td class="total-col ${isRecurringCategory ? 'recurring-total' : ''}">
+          <td
+            class="total-col ${isRecurringCategory ? 'recurring-total' : ''}"
+            ${recurringTotalTooltip ? `title="${esc(recurringTotalTooltip)}"` : ''}
+          >
             ${money(rowTotal)}
             ${
               recurringProrateNote
@@ -2014,6 +2078,47 @@ function getRecurringAmountForMonth(recurringCharge, billingMonth) {
   ).amount;
 }
 
+function getRecurringChargeNote(recurringCharge, billingMonth) {
+  const details =
+    getRecurringBillingDetails(
+      recurringCharge,
+      billingMonth
+    );
+
+  if (details.hasSpecialOverride) {
+    return 'Special Month';
+  }
+
+  if (details.isProrated) {
+    return `Prorated ${details.activeDays}/${details.cycleDays} days`;
+  }
+
+  return '';
+}
+
+function getRecurringProrateTooltip(recurringCharge, billingMonth) {
+  const details =
+    getRecurringBillingDetails(
+      recurringCharge,
+      billingMonth
+    );
+
+  if (details.hasSpecialOverride) {
+    return `Special Month override: ${money(details.amount)}`;
+  }
+
+  if (!details.isProrated) {
+    return '';
+  }
+
+  const dailyRate =
+    details.cycleDays > 0
+      ? details.normalAmount / details.cycleDays
+      : 0;
+
+  return `${money(details.normalAmount)} ÷ ${details.cycleDays} days × ${details.activeDays} active days = ${money(details.amount)} (daily rate ${money(dailyRate)})`;
+}
+
 function renderMonthlyRecurringDisplay() {
   const display = $('monthlyRecurringDisplay');
 
@@ -2064,7 +2169,10 @@ function renderMonthlyRecurringDisplay() {
           <td>${esc(r.items?.name || 'Recurring charge')}</td>
           <td>${esc(r.items?.unit || 'Monthly')}</td>
           <td>${monthText}</td>
-          <td class="total-col">
+          <td
+            class="total-col"
+            ${getRecurringProrateTooltip(r, billingMonth) ? `title="${esc(getRecurringProrateTooltip(r, billingMonth))}"` : ''}
+          >
             ${money(amount)}
             ${
               details.isProrated
@@ -2677,8 +2785,13 @@ $('exportBtn').onclick = () => {
   const recurringAmount =
     getRecurringAmountForMonth(r, month);
 
+  const recurringNote =
+    getRecurringChargeNote(r, month);
+
   aoa.push([
-    r.items?.name || 'Recurring charge',
+    recurringNote
+      ? `${r.items?.name || 'Recurring charge'} — ${recurringNote}`
+      : (r.items?.name || 'Recurring charge'),
     r.items?.unit || 'monthly',
     recurringAmount,
     ...Array(billingDates.length).fill(''),
@@ -2939,8 +3052,13 @@ $('exportPdfBtn').onclick = () => {
     const recurringAmount =
       getRecurringAmountForMonth(r, month);
 
+    const recurringNote =
+      getRecurringChargeNote(r, month);
+
     bodyRows.push([
-      r.items?.name || 'Recurring charge',
+      recurringNote
+        ? `${r.items?.name || 'Recurring charge'}\n${recurringNote}`
+        : (r.items?.name || 'Recurring charge'),
       r.items?.unit || 'monthly',
       Number(recurringAmount).toFixed(2),
       ...Array(billingDates.length).fill(''),
@@ -3447,12 +3565,16 @@ for (const r of recurring) {
       getRecurringAmountForMonth(r, month)
     ) || 0;
 
+  const recurringNote =
+    getRecurringChargeNote(r, month);
+
   recurringTotal += amount;
-  
+
     recurringRows.push([
 
-      r.items?.name ||
-        'Recurring charge',
+      recurringNote
+        ? `${r.items?.name || 'Recurring charge'}\n${recurringNote}`
+        : (r.items?.name || 'Recurring charge'),
 
       r.items?.unit ||
         'Monthly',
@@ -3827,10 +3949,16 @@ function renderCalendarPdfPage(doc, resident, month, cycle, billingDates, period
 
     for (const r of recurringForResident) {
 
-      const recurringAmount = getRecurringAmountForMonth(r, month);
+      const recurringAmount =
+        getRecurringAmountForMonth(r, month);
+
+      const recurringNote =
+        getRecurringChargeNote(r, month);
 
       bodyRows.push([
-        r.items?.name || 'Recurring charge',
+        recurringNote
+          ? `${r.items?.name || 'Recurring charge'}\n${recurringNote}`
+          : (r.items?.name || 'Recurring charge'),
         r.items?.unit || 'monthly',
         Number(recurringAmount).toFixed(2),
         ...Array(billingDates.length).fill(''),
@@ -4002,12 +4130,20 @@ function renderFinancePdfPage(doc, resident, month, cycle, periodText, entriesFo
 
   for (const r of recurringForResident) {
 
-    const amount = Number(getRecurringAmountForMonth(r, month)) || 0;
+    const amount =
+      Number(
+        getRecurringAmountForMonth(r, month)
+      ) || 0;
+
+    const recurringNote =
+      getRecurringChargeNote(r, month);
 
     recurringTotal += amount;
 
     recurringRows.push([
-      r.items?.name || 'Recurring charge',
+      recurringNote
+        ? `${r.items?.name || 'Recurring charge'}\n${recurringNote}`
+        : (r.items?.name || 'Recurring charge'),
       r.items?.unit || 'Monthly',
       `RM ${amount.toFixed(2)}`
     ]);
